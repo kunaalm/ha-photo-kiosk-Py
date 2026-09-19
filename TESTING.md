@@ -77,6 +77,23 @@ HA was black; the HTML was byte-identical — only a real browser revealed it.
 HA serves its frontend with Brotli compression; aiohttp can't decode it without
 the `Brotli` package → 502 on proxied HA. **Fix:** add `Brotli` to requirements.
 
+## Supervisor verified with a real browser
+
+The host-side supervisor (`supervisor/kiosk-supervisor.sh`) was tested with
+**actual Chromium** in the VM harness (`tests/vm-harness/test-supervisor.sh`),
+not a stub. Verified:
+
+1. Supervisor waits for the engine, then launches **real Chromium** at `/frame/`.
+2. HA renders through the proxy in the Chromium iframe (screenshot
+   `docs/images/vm-test/supervisor-restarted-ha.png` — HA login page, verified
+   by vision inspection).
+3. **Killing Chromium** → supervisor detects the exit (rc=137) and **restarts
+   it** (new pid), and HA renders again.
+
+This closes the "supervisor logic tested with a stub, not a real browser" gap.
+The supervision loop (wait → launch → restart-on-crash) is proven against real
+Chromium + real HA.
+
 ## Coverage gaps (honest)
 
 - The VM harness is **manual** (not CI-automated) — it needs KVM + a real HA
