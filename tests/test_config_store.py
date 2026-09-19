@@ -41,6 +41,17 @@ def test_effective_config_applies_overrides():
         assert cfg.ha_url == "http://localhost:8123"
 
 
+def test_save_merges_partial_updates():
+    # A partial POST (only idle_timeout) must NOT clobber an existing ha_url.
+    with tempfile.TemporaryDirectory() as td:
+        store = ConfigStore(str(Path(td) / "kiosk.json"))
+        store.save({"ha_url": "http://192.168.20.12:8123", "idle_timeout_seconds": 30})
+        store.save({"idle_timeout_seconds": 45})  # partial update
+        data = store.load()
+        assert data["ha_url"] == "http://192.168.20.12:8123"  # preserved
+        assert data["idle_timeout_seconds"] == 45              # updated
+
+
 def test_editable_fields_are_whitelisted():
     # No secrets should ever be editable via the web service.
     assert "ha_url" in EDITABLE_FIELDS

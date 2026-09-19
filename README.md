@@ -78,6 +78,12 @@ Env overrides: `HA_URL`, `PHOTO_HOST_DIR` (default `/opt/kiosk/photos`),
 `CONFIG_HOST_DIR` (`/opt/kiosk/config`), `IDLE_TIMEOUT_SECONDS`,
 `SLIDE_INTERVAL_SECONDS`, `KIOSK_USER` (default `kiosk`).
 
+## How-to + demo
+
+- **Step-by-step guide** with real screenshots: [docs/how-to-kiosk-setup.md](docs/how-to-kiosk-setup.md)
+- **Demo GIF** of the kiosk flipping ACTIVE→IDLE→ACTIVE: [docs/images/demo-kiosk.gif](docs/images/demo-kiosk.gif)
+- **Sample photos** to try it with: [`sample-photos/`](sample-photos/)
+
 ## Local dev (no Docker)
 
 ```bash

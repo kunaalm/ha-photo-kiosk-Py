@@ -45,9 +45,13 @@ class ConfigStore:
 
     def save(self, data: Dict[str, Any]) -> None:
         self.path.parent.mkdir(parents=True, exist_ok=True)
-        # Only persist editable fields; ignore unknown keys.
+        # Merge with the existing file so a partial POST (e.g. only
+        # idle_timeout) doesn't clobber unposted fields like ha_url. Only
+        # editable fields are persisted.
         clean = {k: v for k, v in data.items() if k in EDITABLE_FIELDS}
-        self.path.write_text(json.dumps(clean, indent=2))
+        merged = self.load()
+        merged.update(clean)
+        self.path.write_text(json.dumps(merged, indent=2))
 
     def effective_config(self) -> Config:
         """Config with file overrides applied on top of env defaults."""
