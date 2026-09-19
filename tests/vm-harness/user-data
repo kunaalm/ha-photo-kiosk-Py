@@ -1,0 +1,37 @@
+#cloud-config
+hostname: kiosk-vm
+users:
+  - name: kiosk
+    sudo: ALL=(ALL) NOPASSWD:ALL
+    shell: /bin/bash
+    lock_passwd: false
+    plain_text_passwd: kioskpass
+    ssh_authorized_keys:
+      - ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIL02BVJNn3P4FOoTn83V9Scb1GYZ3Tbp0UYbeMrbxo9v hermes@Camphor
+package_update: true
+package_upgrade: false
+packages:
+  - xvfb
+  - x11-utils
+  - xdotool
+  - chromium-browser
+  - python3
+  - python3-pip
+  - python3-venv
+  - imagemagick
+  - curl
+  - net-tools
+runcmd:
+  - echo "=== provisioning kiosk VM ==="
+  - mkdir -p /opt/kiosk
+  - cd /opt/kiosk
+  - git clone https://github.com/kunaalm/ha-photo-kiosk-Py.git . 2>&1 | tail -1
+  - python3 -m venv .venv
+  - .venv/bin/pip install --quiet -r requirements.txt
+  - mkdir -p /opt/kiosk/photos
+  - convert -size 800x500 xc:"#1a3a6a" /opt/kiosk/photos/blue.jpg
+  - convert -size 800x500 xc:"#6a1a3a" /opt/kiosk/photos/red.jpg
+  - convert -size 800x500 xc:"#3a6a1a" /opt/kiosk/photos/green.jpg
+  - echo "=== provisioning complete ==="
+  - ls -la /opt/kiosk/photos/
+final_message: "kiosk-vm provisioning complete"

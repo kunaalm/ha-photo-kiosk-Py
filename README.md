@@ -73,6 +73,8 @@ python3 -m pytest tests/
 
 The testable core (state machine, photo sources, proxy header handling) has no display or Docker dependency — it runs headless, which is why the engine (not the browser) is the container.
 
+There's also a **real-browser VM harness** (`tests/vm-harness/`) that runs the actual kiosk in a QEMU/KVM VM with Xvfb + Chromium against a real Home Assistant instance, driving the ACTIVE→IDLE→ACTIVE toggle and capturing screenshots. It caught three real proxy bugs unit tests couldn't see. See [TESTING.md](TESTING.md) for both layers and the bugs found.
+
 ## Status
 
 Very early scaffolding — see `docs/` and the test suite for what's real. Structured explicitly so **Google Photos OAuth** and **additional sources** are clean extension points.
