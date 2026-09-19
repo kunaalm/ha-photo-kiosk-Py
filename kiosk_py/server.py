@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import os
 from pathlib import Path
 from typing import Optional
 from urllib.parse import urljoin
@@ -17,7 +18,7 @@ from aiohttp import web
 
 from .config import Config
 from .config_store import ConfigStore, EDITABLE_FIELDS
-from .sources import get_source
+from .sources import IMAGE_EXTENSIONS, get_source
 
 log = logging.getLogger("kiosk-engine")
 
@@ -193,6 +194,81 @@ class KioskServer:
         self.store.save(data)
         return web.json_response({"ok": True})
 
+    # ---- Photoss upload / management API ----------------------------------
+    def _safe_photo_name(self, filename: str) -> Optional[str]:
+        """Sanitize an uploaded filename: basename only, image extension only,
+        no path separators. Returns None if rejected."""
+        if not filename or "/" in filename or "\\" in filename or filename.startswith("."):
+            return None
+        base, ext = os.path.splitext(filename)
+        if ext.lower() not in IMAGE_EXTENSIONS or not base:
+            return None
+        # Keep only safe characters; collapse to avoid oddities.
+        import re
+        base = re.sub(r"[^A-Za-z0-9._-]", "_", base)
+        return base + ext.lower()
+
+    def _is_real_image(self, data: bytes) -> bool:
+        """Magic-byte sniff: reject anything that isn't a known image format,
+        so we don't store arbitrary uploads served back as images."""
+        return (
+            data.startswith(b"\xff\xd8\xff")            # JPEG
+            or data.startswith(b"\x89PNG\r\n\x1a\n")    # PNG
+            or data[:6] in (b"GIF87a", b"GIF89a")      # GIF
+            or data.startswith(b"RIFF")                 # WEBP
+            or data.startswith(b"BM")                   # BMP
+        )
+
+    async def serve_photos_list(self, request: web.Request) -> web.Response:
+        """Names of stored photos (for the upload UI)."""
+        from urllib.parse import unquote
+        photos = self.source.list()
+        return web.json_response({"photos": [
+            {"url": p.url, "name": unquote(p.url.rsplit("/", 1)[-1])} for p in photos
+        ]})
+
+    async def upload_photo(self, request: web.Request) -> web.Response:
+        """Accept a multipart image upload and store it in the photo dir."""
+        try:
+            reader = await request.multipart()
+            part = await reader.next()
+            if part is None:
+                return web.json_response({"ok": False, "error": "no file part"}, status=400)
+            # Name from the part's filename header.
+            filename = part.filename or ""
+            safe = self._safe_photo_name(filename)
+            if safe is None:
+                return web.json_response({"ok": False, "error": f"invalid filename: {filename}"}, status=400)
+            # Read, then enforce a size cap (20 MB) manually — aiohttp's
+            # BodyPartReader.read() doesn't take max_size in this version.
+            data = await part.read()
+            if len(data) > 20 * 1024 * 1024:
+                return web.json_response({"ok": False, "error": "file too large (max 20 MB)"}, status=400)
+            if not self._is_real_image(data):
+                return web.json_response({"ok": False, "error": "not a recognized image file"}, status=400)
+            dest = Path(self.effective.photo_dir) / safe
+            dest.parent.mkdir(parents=True, exist_ok=True)
+            dest.write_bytes(data)
+            log.info("uploaded photo %s (%d bytes)", safe, len(data))
+            return web.json_response({"ok": True, "name": safe})
+        except Exception as exc:
+            log.warning("photo upload failed: %s", exc)
+            return web.json_response({"ok": False, "error": str(exc)}, status=500)
+
+    async def delete_photo(self, request: web.Request) -> web.Response:
+        """Delete a stored photo by name (path-traversal safe)."""
+        name = request.match_info["name"]
+        safe = self._safe_photo_name(name)
+        if safe is None:
+            return web.json_response({"ok": False, "error": "invalid name"}, status=400)
+        base = Path(self.effective.photo_dir).resolve()
+        full = (base / safe).resolve()
+        if not full.is_relative_to(base) or not full.is_file():
+            return web.json_response({"ok": False, "error": "not found"}, status=404)
+        full.unlink()
+        log.info("deleted photo %s", safe)
+        return web.json_response({"ok": True})
+
     # ---- app assembly ----------------------------------------------------
     def build_app(self) -> web.Application:
         app = web.Application()
@@ -207,6 +283,10 @@ class KioskServer:
         app.router.add_get("/config", self.serve_config_page)
         app.router.add_get("/api/config", self.get_config)
         app.router.add_post("/api/config", self.post_config)
+        # Photo upload / management API.
+        app.router.add_get("/api/photos", self.serve_photos_list)
+        app.router.add_post("/api/photos", self.upload_photo)
+        app.router.add_delete("/api/photos/{name}", self.delete_photo)
         # Everything else → HA, proxied at the ROOT. This is deliberate: HA's
         # frontend references assets at absolute paths (/frontend_latest/...,
         # /static/..., /api/...). Proxying under a subpath (/ha/) breaks those

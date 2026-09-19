@@ -75,7 +75,7 @@ services:
       CONFIG_FILE: "/config/kiosk.json"
     volumes:
       - "${CONFIG_HOST_DIR}:/config"
-      - "${PHOTO_HOST_DIR}:/photos:ro"
+      - "${PHOTO_HOST_DIR}:/photos"
 EOF
         mkdir -p "$PHOTO_HOST_DIR" "$CONFIG_HOST_DIR"
         docker compose -f "$REPO_DIR/docker-compose.yml" -f "$REPO_DIR/docker-compose.override.yml" up -d \

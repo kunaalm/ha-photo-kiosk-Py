@@ -51,6 +51,17 @@
 
     <button onclick="save()">Save configuration</button>
     <div id="status"></div>
+
+    <hr style="border:none;border-top:1px solid #333;margin:20px 0">
+
+    <h2 style="font-size:16px;margin:0 0 8px">Photos</h2>
+    <div class="sub" style="margin-bottom:12px">Upload images to show in the photo frame. They are stored in the engine's photos directory.</div>
+
+    <input type="file" id="photo_file" accept="image/*" multiple="false" style="padding:6px">
+    <button onclick="uploadPhoto()" style="margin-top:8px">Upload photo</button>
+    <div id="upload_status"></div>
+
+    <div id="photo_list" style="margin-top:12px"></div>
   </div>
 
 <script>
@@ -86,7 +97,65 @@ function setStatus(msg, cls) {
   s.textContent = msg;
   s.className = cls;
 }
+
+// ---- Photo upload / management ----
+function photoFormData() {
+  var f = document.getElementById("photo_file").files[0];
+  return f;
+}
+
+function uploadPhoto() {
+  var f = photoFormData();
+  var st = document.getElementById("upload_status");
+  if (!f) { st.textContent = "Choose a photo first."; st.className = "err"; return; }
+  var fd = new FormData();
+  fd.append("photo", f, f.name);
+  var xhr = new XMLHttpRequest();
+  xhr.open("POST", "/api/photos", true);
+  xhr.onreadystatechange = function () {
+    if (xhr.readyState === 4) {
+      try {
+        var res = JSON.parse(xhr.responseText);
+        st.textContent = res.ok ? ("Uploaded " + res.name) : ("Error: " + (res.error || "unknown"));
+        st.className = res.ok ? "ok" : "err";
+        if (res.ok) { document.getElementById("photo_file").value = ""; loadPhotos(); }
+      } catch (e) { st.textContent = "Upload failed."; st.className = "err"; }
+    }
+  };
+  xhr.send(fd);
+}
+
+function loadPhotos() {
+  var list = document.getElementById("photo_list");
+  fetch("/api/photos").then(r => r.json()).then(data => {
+    list.innerHTML = "";
+    if (!data.photos || !data.photos.length) { list.innerHTML = '<div class="sub">No photos yet.</div>'; return; }
+    data.photos.forEach(function (p) {
+      var row = document.createElement("div");
+      row.style.cssText = "display:flex;align-items:center;justify-content:space-between;padding:4px 0;border-bottom:1px solid #2a2a2a";
+      var name = document.createElement("span");
+      name.textContent = p.name;
+      name.style.fontSize = "13px";
+      var del = document.createElement("button");
+      del.textContent = "Delete";
+      del.style.cssText = "padding:3px 10px;font-size:12px;margin:0";
+      del.onclick = function () { deletePhoto(p.name, row); };
+      row.appendChild(name);
+      row.appendChild(del);
+      list.appendChild(row);
+    });
+  }).catch(function(){});
+}
+
+function deletePhoto(name, row) {
+  fetch("/api/photos/" + encodeURIComponent(name), { method: "DELETE" })
+    .then(r => r.json()).then(res => {
+      if (res.ok) { row.remove(); } else { alert("Delete failed: " + (res.error || "unknown")); }
+    }).catch(function(){});
+}
+
 load();
+loadPhotos();
 </script>
 </body>
 </html>
