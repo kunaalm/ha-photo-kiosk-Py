@@ -57,6 +57,27 @@ docker run -d --name kiosk-engine \
 
 Point your Chromium kiosk at `http://localhost:8080/` and you're done — no browser restarts ever.
 
+## Full install (one command)
+
+`install.sh` turns a Debian box into a complete kiosk: builds + starts the engine
+container, creates the `kiosk` user, installs the supervisor + systemd unit, and
+sets up the photos dir. `uninstall.sh` removes it all.
+
+```bash
+# Install (run as root/sudo)
+sudo HA_URL="http://192.168.20.12:8123" bash install.sh
+
+# Start the kiosk now
+sudo systemctl start ha-photo-kiosk.service
+
+# Uninstall (REMOVE_DATA=1 also deletes photos/config)
+sudo bash uninstall.sh
+```
+
+Env overrides: `HA_URL`, `PHOTO_HOST_DIR` (default `/opt/kiosk/photos`),
+`CONFIG_HOST_DIR` (`/opt/kiosk/config`), `IDLE_TIMEOUT_SECONDS`,
+`SLIDE_INTERVAL_SECONDS`, `KIOSK_USER` (default `kiosk`).
+
 ## Local dev (no Docker)
 
 ```bash
