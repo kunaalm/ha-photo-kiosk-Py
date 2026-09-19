@@ -6,9 +6,9 @@ A containerized **two-state kiosk engine**: display your Home Assistant dashboar
 
 ```
                   touches/moves/key
-   ┌──────┐      ─────────────▶      ┌────────────┐
+   ┌────────┐      ─────────────▶    ┌────────────┐
    │ ACTIVE │ (HA dashboard shown)   │   IDLE     │ (photo frame shown)
-   └──────┘      ◀───── idle N sec   └────────────┘
+   └────────┘      ◀───── idle N sec └────────────┘
 ```
 
 - **ACTIVE** — the engine reverse-proxies your real Home Assistant at a single local URL.
