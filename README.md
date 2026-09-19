@@ -75,6 +75,10 @@ The testable core (state machine, photo sources, proxy header handling) has no d
 
 There's also a **real-browser VM harness** (`tests/vm-harness/`) that runs the actual kiosk in a QEMU/KVM VM with Xvfb + Chromium against a real Home Assistant instance, driving the ACTIVE→IDLE→ACTIVE toggle and capturing screenshots. It caught three real proxy bugs unit tests couldn't see. See [TESTING.md](TESTING.md) for both layers and the bugs found.
 
+## Host-side supervisor
+
+The engine is the smarts; the **supervisor** (`supervisor/`) is the thin host process that launches and keeps alive the Chromium kiosk pointing at it — waits for the engine, launches Chromium at `/frame/`, restarts on crash. See [supervisor/README.md](supervisor/README.md).
+
 ## Status
 
 Very early scaffolding — see `docs/` and the test suite for what's real. Structured explicitly so **Google Photos OAuth** and **additional sources** are clean extension points.

@@ -1,0 +1,30 @@
+[Unit]
+Description=HA Photo Kiosk supervisor (Chromium kiosk at engine /frame/)
+# The engine container must be up first; the supervisor waits for it anyway,
+# but ordering avoids a race at boot.
+After=docker.service network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+# Run as a dedicated kiosk user (create with: useradd -m kiosk)
+User=kiosk
+Group=kiosk
+ExecStart=/usr/local/bin/kiosk-supervisor.sh
+# The supervisor owns the display session. On a real kiosk this is the
+# physical display (:0); on a headless box point it at an Xvfb instance.
+Environment=DISPLAY=:0
+Environment=XDG_RUNTIME_DIR=/run/user/%U
+# Restart the supervisor itself if it dies (belt-and-braces on top of the
+# script's own Chromium-restart loop).
+Restart=always
+RestartSec=5
+# Give the supervisor a clean TTY so Chromium can grab input.
+StandardInput=tty
+TTYPath=/dev/tty7
+TTYReset=yes
+TTYVHangup=yes
+TTYVTDisallocate=yes
+
+[Install]
+WantedBy=multi-user.target
