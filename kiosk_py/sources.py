@@ -93,9 +93,135 @@ class HttpSource:
         return photos
 
 
+class GooglePhotosSource:
+    """Google Photos via the Library API (OAuth2, read-only).
+
+    Auth: a Google Cloud OAuth2 client (client_id + client_secret) plus a
+    refresh token that grants access to YOUR OWN Photos library. These are
+    real secrets — provide them by file/env, not baked into the source, and
+    never into the vault/notes.
+
+    Rendering: the Library API returns a per-media ``baseUrl`` on Google's CDN
+    (lh3.googleusercontent.com). The frame page loads those directly in an
+    <img>, which works cross-origin (no proxy, no CORS needed for images). We
+    append ``=w<width>-h<height>`` to get a downscaled render.
+
+    Since photos come from your own authenticated library the URLs are
+    credentialed; a ``+h<height>`` suffix is the standard way to request a
+    servable variant.
+    """
+
+    name = "google-photos"
+    TOKEN_URL = "https://oauth2.googleapis.com/token"
+    MEDIA_URL = "https://photoslibrary.googleapis.com/v1/mediaItems"
+    ALBUM_URL = "https://photoslibrary.googleapis.com/v1/albums"
+    MAX_WIDTH = 1920
+    MAX_HEIGHT = 1200
+
+    def __init__(
+        self,
+        client_id: str = "",
+        client_secret: str = "",
+        refresh_token: str = "",
+        album_id: str = "",
+        timeout: float = 10.0,
+    ):
+        self.client_id = client_id
+        self.client_secret = client_secret
+        self.refresh_token = refresh_token
+        self.album_id = album_id
+        self.timeout = timeout
+        import time
+        self._access_token: Optional[str] = None
+        self._expires_at: float = 0.0
+
+    def _authorized(self) -> bool:
+        return bool(self.client_id and self.client_secret and self.refresh_token)
+
+    def _refresh_token(self) -> Optional[str]:
+        import json as _json
+        import urllib.parse
+        import urllib.request
+        params = {
+            "client_id": self.client_id,
+            "client_secret": self.client_secret,
+            "refresh_token": self.refresh_token,
+            "grant_type": "refresh_token",
+        }
+        req = urllib.request.Request(
+            self.TOKEN_URL,
+            data=urllib.parse.urlencode(params).encode(),
+            headers={"Content-Type": "application/x-www-form-urlencoded"},
+        )
+        try:
+            with urllib.request.urlopen(req, timeout=self.timeout) as resp:
+                data = _json.loads(resp.read().decode("utf-8"))
+        except Exception:
+            return None
+        token = data.get("access_token")
+        if token:
+            import time
+            self._access_token = token
+            # Refresh tokens are usually valid 3600s; be conservative.
+            self._expires_at = time.time() + int(data.get("expires_in", 3600)) - 120
+        return token
+
+    def _headers(self):
+        return {"Authorization": f"Bearer {self._access_token}"}
+
+    def _get_json(self, url: str, params: Optional[dict] = None) -> Optional[dict]:
+        import json as _json
+        import time
+        import urllib.parse
+        import urllib.request
+        if not self._access_token or time.time() >= self._expires_at:
+            if not self._refresh_token():
+                return None
+        q = urllib.parse.urlencode(params or {})
+        full = url if not q else f"{url}?{q}"
+        req = urllib.request.Request(full, headers=self._headers())
+        try:
+            with urllib.request.urlopen(req, timeout=self.timeout) as resp:
+                return _json.loads(resp.read().decode("utf-8"))
+        except Exception:
+            return None
+
+    def _media_url(self) -> str:
+        # Media items for the whole library, or a specific album.
+        if self.album_id:
+            return f"{self.ALBUM_URL}/{self.album_id}"
+        return self.MEDIA_URL
+
+    def list(self) -> List[Photo]:
+        if not self._authorized():
+            return []
+        # _get_json refreshes the access token only when needed (cached
+        # otherwise), so no unconditional refresh here.
+        items = self._get_json(self._media_url(), {"pageSize": "100"})
+        if not items:
+            return []
+        photos: List[Photo] = []
+        media = items.get("mediaItems", [])
+        for it in media:
+            url = it.get("baseUrl")
+            if not url:
+                continue
+            render = f"{url}=w{self.MAX_WIDTH}-h{self.MAX_HEIGHT}"
+            photos.append(Photo(url=render, caption=it.get("filename", "")))
+        return photos
+
+
 def get_source(config) -> Source:
     """Factory: maps config.photo_source to a Source instance."""
     if config.photo_source == "http":
         return HttpSource(config.photo_catalog_url, config.http_proxy_timeout)
+    if config.photo_source == "google-photos":
+        return GooglePhotosSource(
+            client_id=config.google_client_id,
+            client_secret=config.google_client_secret,
+            refresh_token=config.google_refresh_token,
+            album_id=config.google_album_id,
+            timeout=config.http_proxy_timeout,
+        )
     # default: local
     return LocalSource(config.photo_dir)

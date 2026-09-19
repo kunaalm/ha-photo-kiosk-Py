@@ -4,9 +4,10 @@ services:
     # `--build` (and build: . to build from the local tree).
     image: ${IMAGE:-ghcr.io/kunaalm/ha-photo-kiosk-py:latest}
     container_name: kiosk-engine
-    # localhost-only: the browser on the same box reaches it; nothing external.
+    # Reachable from the LAN so you can configure/upload from a laptop
+    # (see README — the kiosk itself is meant to be hands-off).
     ports:
-      - "127.0.0.1:8080:8080"
+      - "8080:8080"
     environment:
       HA_URL: "${HA_URL:-http://localhost:8123}"
       PHOTO_SOURCE: "${PHOTO_SOURCE:-local}"

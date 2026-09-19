@@ -33,8 +33,8 @@ cd ha-photo-kiosk-Py
 sudo bash install.sh
 ```
 
-The installer prints a summary and — importantly — **tells you the next step is
-the web config service**:
+The installer prints a summary and — importantly — **tells you to open the web
+config service from a laptop**:
 
 ```
 =========================== INSTALL COMPLETE ========================
@@ -45,16 +45,23 @@ the web config service**:
       http://localhost:8080/config/
 ```
 
-## 3. Configure via the web config service
+## 3. Configure from your laptop (not the kiosk screen)
 
-Open `http://localhost:8080/config/` in a browser on the kiosk box. This is
-where you complete the setup — set your HA URL, photo source, and timings.
+> **Configure this from a laptop/phone, not from the kiosk itself.** The kiosk
+> is a single-purpose device you set up once and barely touch.
+
+Open the kiosk's config page from your laptop (replace `192.168.1.50` with the
+kiosk's real IP — the installer printed it):
+
+```
+http://192.168.1.50:8080/config/
+```
 
 ![Web config service](images/vm-test/howto-config-full.png)
 
 Set:
 - **Home Assistant URL** — your HA instance, e.g. `http://192.168.20.12:8123`.
-- **Photo source** — `Local directory` (default) or `HTTP catalog`.
+- **Photo source** — `Local directory` (uploaded, the default) or `Google Photos`.
 - **Photo directory** — where photos live inside the engine (default `/photos`).
 - **Idle timeout** — seconds of no input before switching to the photo frame.
 - **Slide interval** — seconds each photo is shown.
@@ -68,12 +75,12 @@ sudo docker restart kiosk-engine     # container install
 # or: sudo systemctl restart kiosk-engine   # --from-source install
 ```
 
-## 4. Add photos
+## 4. Add photos — upload them from the config page
 
-You can upload photos directly from the web config — no need to touch the
-filesystem. Scroll to the **Photos** section, choose an image, and click
-**Upload photo**. Uploaded photos appear in the list and are shown in the
-photo frame.
+**The supported way to add photos is the upload box in the config page** — no
+ssh, no file copying, no flash drives. Open `/config/` on your laptop, scroll to
+**Photos**, pick images with your laptop's file picker, and click **Upload**.
+They're stored by the engine and shown in the frame.
 
 ![Photos section](images/vm-test/howto-config-photos.png)
 
@@ -110,6 +117,10 @@ without rebooting:
 ```bash
 sudo systemctl start ha-photo-kiosk.service
 ```
+
+For how everything works under the hood, see
+[ARCHITECTURE.md](ARCHITECTURE.md) (design + implementation + testing) and
+[`google-photos.md`](google-photos.md) for the Google Photos source.
 
 ## Troubleshooting
 

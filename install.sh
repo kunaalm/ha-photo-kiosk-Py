@@ -67,6 +67,8 @@ install_engine() {
 services:
   kiosk-engine:
     image: ${IMAGE}
+    ports:
+      - "8080:8080"              # reachable from LAN for config/upload from a laptop
     environment:
       HA_URL: "http://localhost:8123"   # seed; edit via web config
       PHOTO_DIR: "/photos"
@@ -175,23 +177,32 @@ main() {
     log ""
     log "=========================== INSTALL COMPLETE ========================"
     log ""
-    log "  NEXT STEP — not done until you configure it:"
-    log "  Open the WEB CONFIG SERVICE in a browser:"
+    log "  NEXT STEP — configure it from a LAPTOP, not this screen:"
     log ""
-    log "      http://localhost:$ENGINE_PORT/config/"
-    log ""
+    # Best-effort: print the kiosk's LAN IP so the user can reach it from a PC.
+    KIOSK_IP="$(hostname -I 2>/dev/null | awk '{print $1}')"
+    if [ -n "$KIOSK_IP" ]; then
+        log "  On your laptop/phone, open:"
+        log ""
+        log "      http://${KIOSK_IP}:$ENGINE_PORT/config/"
+        log ""
+        log "  (If that IP isn't right, find this box's IP with: ip addr)"
+        log ""
+    else
+        log "  On your laptop/phone, open this kiosk's config page:"
+        log "      http://<kiosk-ip>:$ENGINE_PORT/config/"
+        log "  (find the kiosk's IP with: ip addr)"
+        log ""
+    fi
     log "  There you set:"
     log "    - Home Assistant URL (http://<your-ha-ip>:8123)"
-    log "    - Photo source (local dir or HTTP catalog)"
-    log "    - Photo directory / Idle timeout / Slide interval"
+    log "    - Idle timeout / slide interval"
+    log "    - Upload your photos"
     log "  Then restart the engine for changes to take effect:"
-    log "      sudo systemctl restart kiosk-engine   # source install"
     log "      sudo docker restart kiosk-engine       # container install"
     log ""
-    log "  Start the kiosk now:   systemctl start ha-photo-kiosk.service"
-    log "  The kiosk page itself:  http://localhost:$ENGINE_PORT/frame/"
-    log ""
-    log "  Photos dir:      $PHOTO_HOST_DIR"
+    log "  To start the kiosk now:   systemctl start ha-photo-kiosk.service"
+    log "  (It also starts automatically on boot — that's the point.)"
     log ""
 }
 

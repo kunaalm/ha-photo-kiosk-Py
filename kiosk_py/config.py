@@ -35,11 +35,19 @@ class Config:
     port: int = 8080
 
     # --- Photo source ---
-    photo_source: str = "local"            # local | http
+    photo_source: str = "local"            # local | http | google-photos
     photo_dir: str = "/photos"             # source=local
     photo_catalog_url: str = ""            # source=http (URL to a JSON catalog)
     cache_dir: str = "/cache"
     slide_interval_seconds: int = 10
+
+    # --- Google Photos (source=google-photos). Secrets are referenced by
+    # env/file, never baked in or logged. Create an OAuth2 client at
+    # console.cloud.google.com and obtain a refresh token (see docs/google-photos.md).
+    google_client_id: str = ""
+    google_client_secret: str = ""
+    google_refresh_token: str = ""
+    google_album_id: str = ""              # optional: show one album
 
     # --- Idle / state machine ---
     idle_timeout_seconds: int = 120        # no input for this long → idle
@@ -62,6 +70,10 @@ class Config:
             photo_catalog_url=os.getenv("PHOTO_CATALOG_URL", ""),
             cache_dir=os.getenv("CACHE_DIR", "/cache"),
             slide_interval_seconds=_env_int("SLIDE_INTERVAL_SECONDS", 10),
+            google_client_id=os.getenv("GOOGLE_CLIENT_ID", ""),
+            google_client_secret=os.getenv("GOOGLE_CLIENT_SECRET", ""),
+            google_refresh_token=os.getenv("GOOGLE_REFRESH_TOKEN", ""),
+            google_album_id=os.getenv("GOOGLE_ALBUM_ID", ""),
             idle_timeout_seconds=_env_int("IDLE_TIMEOUT_SECONDS", 120),
             idle_fade_seconds=_env_int("IDLE_FADE_SECONDS", 1),
             http_proxy_timeout=float(os.getenv("HTTP_PROXY_TIMEOUT", "10")),

@@ -1,111 +1,153 @@
-# ha-photo-kiosk Py
+# ha-photo-kiosk
 
-A containerized **two-state kiosk engine**: display your Home Assistant dashboard in a Chromium kiosk as usual, but when the display goes idle, flip to a **photo frame**. The browser is a dumb renderer that loads **one URL once and never restarts** — the engine is the sole orchestrator.
+Turn a small Debian box (or Raspberry Pi) into a **two-in-one home display**:
+your **Home Assistant dashboard** when people are using it, and a **digital
+photo frame** when it goes idle. No browser restarts, ever.
 
-## The mental model: state machine, not browser control
+![Demo: the kiosk flipping between Home Assistant and the photo frame](docs/images/demo-kiosk.gif)
+
+## What it does
 
 ```
-                  touches/moves/key
-   ┌────────┐      ─────────────▶    ┌────────────┐
-   │ ACTIVE │ (HA dashboard shown)   │   IDLE     │ (photo frame shown)
-   └────────┘      ◀───── idle N sec └────────────┘
+                  touches / moves / key
+   ┌────────┐     ─────────────────▶    ┌────────────┐
+   │ ACTIVE │  (Home Assistant shown)   │    IDLE    │ (photo frame)
+   └────────┘     ◀─── idle N sec ────  └────────────┘
 ```
 
-- **ACTIVE** — the engine reverse-proxies your real Home Assistant at a single local URL.
-- **IDLE** — after N seconds without input, the frame page (served by the engine) fades the HA iframe out and shows a photo slideshow.
-- Input returns → instant flip back to the live dashboard. No reload, no re-auth: HA stays loaded in the background.
+- **Active** — your Home Assistant dashboard, full screen.
+- **Idle** — after a few seconds without input, it fades to a photo slideshow.
+- Touch / move / press anything → instantly back to the dashboard. The
+  dashboard stays loaded in the background, so returning is instant — no
+  reload, no re-login.
 
-The **idle detection is client-side JavaScript** on the served page — it watches real input events and flips layers. The engine only serves content. This is the same "attract mode" pattern used by digital-signage and conference-room displays.
+It's the same "attract mode" pattern used by digital signage and conference
+room displays. Set it and forget it.
 
-## Why a reverse proxy instead of just an iframe or a browser restart
+## How to set it up
 
-- **Real Home Assistant sends `X-Frame-Options: SAMEORIGIN`**, which makes a cross-origin `<iframe>` fail outright (verified against HA 2026.x stable). The engine proxies HA at `localhost:8080/ha/*` and strips that header, so the iframe is allowed. Safe because the proxy binds to **localhost only** on the kiosk box.
-- No Chromium restarts: restarting to swap URLs loses the HA session/logs you out and causes a flicker. With the multiplexer, the dashboard stays alive in the background and flipping back is *instant*.
+> **You configure this from a laptop, not from the kiosk screen.** The whole
+> point is that the kiosk is a single-purpose device you barely touch. After
+> installing, use your phone/laptop to open its config page and finish setup.
 
-## Architecture
+### 1. Install (one command, on the kiosk box)
 
-- **Container: the engine** (Python) — reverse-proxies HA, serves the frame page and `/images`, caches and serves photo sources. Pure network + compute, zero display → fully CI-testable headless.
-- **Host: the browser** — one Chromium tab pointing at `http://localhost:8080/`. Thin client that owns the framebuffer; all smarts live in the engine.
-
-## Photo sources (pluggable)
-
-The engine exposes a `Source` interface. Every source yields an ordered list of image URLs/objects the frame page cycles:
-
-| Source | What it is |
-|---|---|
-| `local` | A directory of JPG/PNG/WebP files (also the target for "sync Apple iCloud → local folder" flows). |
-| `http` | Any HTTP URL or feed that yields photos (e.g. a self-hosted Immich/PhotoPrism album endpoint, or a simple JSON list of image URLs). |
-| *(future)* `google-photos` | Google Photos Library API via OAuth2 client. Real but heavier (client registration + token refresh). Extension point, not built yet. |
-
-> **Apple Photos is deliberately NOT a native source.** Apple has no public photos API — only reverse-engineered iCloud endpoints that break without notice. The sane path is syncing (iCloud → machine → local folder) and pointing a `local` source at it. Don't build against a vendor API that doesn't legally exist.
-
-## Quick start (engine, container)
+Download and run the installer. It pulls the pre-built engine container, sets
+up the display supervisor, and creates the kiosk user — no compile step.
 
 ```bash
-docker build -t ha-photo-kiosk-py .
-
-docker run -d --name kiosk-engine \
-  -p 127.0.0.1:8080:8080 \
-  -e HA_URL="http://192.168.20.12:8123" \
-  -e PHOTO_SOURCE="local" \
-  -e PHOTO_DIR="/photos" \
-  -e IDLE_TIMEOUT_SECONDS="120" \
-  -v /path/to/photos:/photos:ro \
-  -v kiosk-cache:/cache \
-  ha-photo-kiosk-py
+git clone https://github.com/kunaalm/ha-photo-kiosk
+cd ha-photo-kiosk
+sudo bash install.sh
 ```
 
-Point your Chromium kiosk at `http://localhost:8080/` and you're done — no browser restarts ever.
+Needs: a Debian-based box (Ubuntu / Debian / Raspberry Pi OS) with **Docker**,
+and a reachable Home Assistant instance.
 
-## Full install (one command)
+### 2. Configure from your laptop
 
-`install.sh` turns a Debian box into a complete kiosk: builds + starts the engine
-container, creates the `kiosk` user, installs the supervisor + systemd unit, and
-sets up the photos dir. `uninstall.sh` removes it all.
+On your laptop, open the kiosk's config page (replace `192.168.1.50` with the
+kiosk's real IP):
+
+```
+http://192.168.1.50:8080/config/
+```
+
+![The web config service](docs/images/vm-test/howto-config-full.png)
+
+There you set:
+
+- **Home Assistant URL** — e.g. `http://192.168.20.12:8123`
+- **Idle timeout** — seconds before it flips to the photo frame
+- And you **upload photos** (next step).
+
+Click **Save configuration**, then restart the engine:
+`sudo docker restart kiosk-engine`.
+
+> If the kiosk and your laptop are on different networks, tunnel in first:
+> `ssh -L 8080:localhost:8080 user@<kiosk-ip>` then open `http://localhost:8080/config/`.
+
+### 3. Add photos — upload them from the config page
+
+The **easiest way is the upload box on the config page** — no file copying,
+no ssh, no card removal. Open `/config/`, scroll to **Photos**, pick images on
+your laptop, and click **Upload**. They're stored by the engine and shown in
+the frame.
+
+![Upload photos from the config page](docs/images/vm-test/howto-config-photos.png)
+
+Alternative sources:
+- **Google Photos** — point the config at your own Google Photos albums (see
+  [docs/google-photos.md](docs/google-photos.md)).
+- **Local directory** — if the kiosk box itself has images somewhere you can
+  reach, or you're comfortable mounting a folder.
+
+### 4. Point Chromium at it
+
+On the kiosk box, the installer already wired the supervisor + systemd to
+launch Chromium at the kiosk page on boot.
 
 ```bash
-# Install (run as root/sudo)
-sudo HA_URL="http://192.168.20.12:8123" bash install.sh
-
-# Start the kiosk now
-sudo systemctl start ha-photo-kiosk.service
-
-# Uninstall (REMOVE_DATA=1 also deletes photos/config)
-sudo bash uninstall.sh
+sudo systemctl start ha-photo-kiosk.service   # start now
+# (it also starts automatically on boot — that's the point)
 ```
 
-Env overrides: `HA_URL`, `PHOTO_HOST_DIR` (default `/opt/kiosk/photos`),
-`CONFIG_HOST_DIR` (`/opt/kiosk/config`), `IDLE_TIMEOUT_SECONDS`,
-`SLIDE_INTERVAL_SECONDS`, `KIOSK_USER` (default `kiosk`).
+You'll see your dashboard:
 
-## How-to + demo
+![Active state — Home Assistant](docs/images/vm-test/howto-active.png)
 
-- **Step-by-step guide** with real screenshots: [docs/how-to-kiosk-setup.md](docs/how-to-kiosk-setup.md)
-- **Demo GIF** of the kiosk flipping ACTIVE→IDLE→ACTIVE: [docs/images/demo-kiosk.gif](docs/images/demo-kiosk.gif)
-- **Sample photos** to try it with: [`sample-photos/`](sample-photos/)
+…and when idle it flips to your photos:
 
-## Local dev (no Docker)
+![Idle state — photo frame](docs/images/vm-test/howto-idle.png)
+
+### Done
+
+That's the whole setup. Touch the screen (or move the mouse) and it's a
+dashboard again; leave it alone and it's a photo frame.
+
+## Uninstall
 
 ```bash
-python3 -m venv .venv && source .venv/bin/activate   # or just use system python3 (stdlib-only)
-./app.py serve --ha-url http://192.168.20.12:8123
-# then open http://localhost:8080/
+sudo bash uninstall.sh            # removes everything
+sudo REMOVE_DATA=1 bash uninstall.sh   # also delete photos + config
 ```
 
-## Tests
+## How it works (for the curious)
+
+- **Engine** (a container) is the brains: it reverse-proxies Home Assistant,
+  serves the kiosk page and photos, and exposes the config + upload service.
+- **Supervisor** (a tiny host script) owns the browser: it launches Chromium
+  at the kiosk page and restarts it if it crashes.
+- **No browser restarts** — the kiosk loads one URL once; the engine
+  multiplexes dashboard (proxied) and photos. This is why it's instant.
+
+Full details: [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md),
+[TESTING.md](TESTING.md).
+
+## Options at install time
+
+- `sudo bash install.sh --from-source` — install the engine as a Python venv
+  on the host instead of a container (for hacking on the code, or boxes
+  without Docker).
+- `sudo HA_URL="http://..." bash install.sh` — pre-seed the Home Assistant
+  URL at install time (otherwise set it in the web config).
+
+## Sample photos
+
+[`sample-photos/`](sample-photos/) has a few real photos to try before you
+upload your own.
+
+## Local development
 
 ```bash
-python3 -m pytest tests/
+python3 -m venv .venv && source .venv/bin/activate
+pip install -r requirements.txt
+HA_URL="http://192.168.20.12:8123" PHOTO_DIR="./photos" python app.py
+# open http://localhost:8080/
 ```
-
-The testable core (state machine, photo sources, proxy header handling) has no display or Docker dependency — it runs headless, which is why the engine (not the browser) is the container.
-
-There's also a **real-browser VM harness** (`tests/vm-harness/`) that runs the actual kiosk in a QEMU/KVM VM with Xvfb + Chromium against a real Home Assistant instance, driving the ACTIVE→IDLE→ACTIVE toggle and capturing screenshots. It caught three real proxy bugs unit tests couldn't see. See [TESTING.md](TESTING.md) for both layers and the bugs found.
-
-## Host-side supervisor
-
-The engine is the smarts; the **supervisor** (`supervisor/`) is the thin host process that launches and keeps alive the Chromium kiosk pointing at it — waits for the engine, launches Chromium at `/frame/`, restarts on crash. See [supervisor/README.md](supervisor/README.md).
 
 ## Status
 
-Very early scaffolding — see `docs/` and the test suite for what's real. Structured explicitly so **Google Photos OAuth** and **additional sources** are clean extension points.
+Working end-to-end: engine, supervisor, installer, web config + photo upload,
+and a real Chrome-based test harness. Google Photos integration and additional
+photo sources are in progress.
