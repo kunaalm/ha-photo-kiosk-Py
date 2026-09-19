@@ -23,6 +23,8 @@ log = logging.getLogger("kiosk-engine")
 # Response headers that must be rewritten or dropped on the HA proxy path.
 RESPONSE_HEADERS_TO_DROP = {
     "content-length",   # recomputed by aiohttp
+    "content-encoding", # aiohttp already decompressed the body; forwarding the
+                        # header makes the browser try to inflate plain bytes → black screen
     "transfer-encoding",
     "connection",
     "keep-alive",

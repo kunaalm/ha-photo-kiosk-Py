@@ -27,6 +27,15 @@ def test_drops_frame_blocking_headers_when_enabled():
     assert "content-length" not in out  # aiohttp recomputes
 
 
+def test_drops_content_encoding():
+    # aiohttp auto-decompresses the body; forwarding Content-Encoding makes the
+    # browser try to inflate already-plain bytes → black screen.
+    s = _server({"strip_x_frame_options": True})
+    out = s._rewrite_response_headers({"Content-Encoding": "deflate", "Content-Type": "text/html"})
+    assert "content-encoding" not in out
+    assert out.get("Content-Type") == "text/html"
+
+
 def test_keeps_frame_blocking_when_disabled():
     s = _server({"strip_x_frame_options": False})
     out = s._rewrite_response_headers({"X-Frame-Options": "SAMEORIGIN"})
