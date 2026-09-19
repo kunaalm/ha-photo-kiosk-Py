@@ -94,6 +94,26 @@ This closes the "supervisor logic tested with a stub, not a real browser" gap.
 The supervision loop (wait → launch → restart-on-crash) is proven against real
 Chromium + real HA.
 
+## Web config service verified in a real browser
+
+The `/config/` web UI was driven in **real Chromium** via CDP
+(`tests/vm-harness/test-config-ui.sh`), not just curl'd. Verified the full
+flow:
+
+1. Load `/config/` in Chromium — page renders with current values (HA URL,
+   idle timeout 120, etc.).
+2. Edit the idle-timeout field to 45 in the live DOM, click **Save**.
+3. `GET /api/config` returns `idle_timeout_seconds = 45` — persisted.
+4. Config file on disk contains `"idle_timeout_seconds": 45`.
+5. **Restart the engine** → the served frame page now shows
+   `var IDLE_TIMEOUT = parseInt("45", 10)` — the web-configured value is baked
+   into the actual kiosk page.
+
+Full round-trip proven: web UI → save → config file → engine restart → frame
+page reflects the change. (Note: driven via CDP because synthetic X events
+don't reach Chromium reliably in a WM-less Xvfb; CDP is the standard web-UI
+automation interface and still exercises the real page in a real browser.)
+
 ## Coverage gaps (honest)
 
 - The VM harness is **manual** (not CI-automated) — it needs KVM + a real HA
