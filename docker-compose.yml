@@ -1,12 +1,14 @@
 services:
   kiosk-engine:
-    build: .
+    # Default: pull the published image. To build from source instead, add
+    # `--build` (and build: . to build from the local tree).
+    image: ${IMAGE:-ghcr.io/kunaalm/ha-photo-kiosk-py:latest}
     container_name: kiosk-engine
     # localhost-only: the browser on the same box reaches it; nothing external.
     ports:
       - "127.0.0.1:8080:8080"
     environment:
-      HA_URL: "${HA_URL:-http://192.168.20.12:8123}"
+      HA_URL: "${HA_URL:-http://localhost:8123}"
       PHOTO_SOURCE: "${PHOTO_SOURCE:-local}"
       PHOTO_DIR: "${PHOTO_DIR:-/photos}"
       IDLE_TIMEOUT_SECONDS: "${IDLE_TIMEOUT_SECONDS:-120}"

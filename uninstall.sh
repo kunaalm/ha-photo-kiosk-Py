@@ -24,12 +24,22 @@ rm -f /usr/local/bin/kiosk-supervisor.sh
 systemctl daemon-reload
 log "supervisor removed."
 
-# --- Stop + remove engine container -------------------------------------
-log "stopping + removing engine container..."
-docker compose -f "$REPO_DIR/docker-compose.yml" -f "$REPO_DIR/docker-compose.override.yml" down -v 2>/dev/null \
-    || docker rm -f kiosk-engine 2>/dev/null
-rm -f "$REPO_DIR/docker-compose.override.yml"
-log "engine container removed."
+# --- Stop + remove engine container / source service --------------------
+if command -v docker >/dev/null 2>&1; then
+    log "stopping + removing engine container..."
+    docker compose -f "$REPO_DIR/docker-compose.yml" -f "$REPO_DIR/docker-compose.override.yml" down -v 2>/dev/null \
+        || docker rm -f kiosk-engine 2>/dev/null
+    rm -f "$REPO_DIR/docker-compose.override.yml"
+    log "engine container removed."
+fi
+
+if [ -f /etc/systemd/system/kiosk-engine.service ]; then
+    systemctl stop kiosk-engine.service 2>/dev/null
+    systemctl disable kiosk-engine.service 2>/dev/null
+    rm -f /etc/systemd/system/kiosk-engine.service
+    systemctl daemon-reload
+    log "engine source service removed."
+fi
 
 # --- Remove kiosk user ---------------------------------------------------
 if id "$KIOSK_USER" >/dev/null 2>&1; then
