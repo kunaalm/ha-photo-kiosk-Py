@@ -33,19 +33,21 @@ def test_keeps_frame_blocking_when_disabled():
     assert out.get("X-Frame-Options") == "SAMEORIGIN"
 
 
-def test_rewrites_absolute_location_back_through_proxy():
-    s = _server({"ha_url": "http://192.168.20.12:8123", "ha_proxy_prefix": "/ha"})
+def test_rewrites_absolute_location_to_root():
+    # Root proxying: an absolute HA Location becomes a root-relative path.
+    s = _server({"ha_url": "http://192.168.20.12:8123"})
     out = s._rewrite_response_headers({"Location": "http://192.168.20.12:8123/auth/login"})
-    assert out["Location"] == "/ha/auth/login"
+    assert out["Location"] == "/auth/login"
 
 
-def test_rewrites_relative_location():
-    s = _server({"ha_proxy_prefix": "/ha"})
+def test_keeps_relative_location():
+    # Root proxying: a relative Location is already correct.
+    s = _server({"ha_url": "http://192.168.20.12:8123"})
     out = s._rewrite_response_headers({"Location": "/auth/login"})
-    assert out["Location"] == "/ha/auth/login"
+    assert out["Location"] == "/auth/login"
 
 
 def test_keeps_external_location():
-    s = _server({"ha_proxy_prefix": "/ha"})
+    s = _server({"ha_url": "http://192.168.20.12:8123"})
     out = s._rewrite_response_headers({"Location": "https://example.com/x"})
     assert out["Location"] == "https://example.com/x"

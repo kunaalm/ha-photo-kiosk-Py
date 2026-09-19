@@ -47,9 +47,8 @@ class KioskServer:
 
     # ---- HA reverse proxy ------------------------------------------------
     async def proxy_ha(self, request: web.Request) -> web.Response:
-        """Proxy everything under /ha/* to the real HA instance."""
-        prefix = self.config.ha_proxy_prefix  # "/ha"
-        downstream_path = request.path[len(prefix):] or "/"
+        """Proxy everything not handled by engine routes to the real HA."""
+        downstream_path = request.path or "/"
         if request.query_string:
             downstream_path += "?" + request.query_string
 
@@ -131,10 +130,9 @@ class KioskServer:
     def _rewrite_location(self, location: str) -> str:
         # If HA redirects to itself (login), point back through our proxy.
         if location.startswith(self.ha_origin):
-            remainder = location[len(self.ha_origin):]
-            return self.config.ha_proxy_prefix + remainder
+            return location[len(self.ha_origin):]
         if location.startswith("/"):
-            return self.config.ha_proxy_prefix + location
+            return location
         return location
 
     # ---- Frame page + images --------------------------------------------
@@ -144,7 +142,6 @@ class KioskServer:
         html = html.replace("{{IDLE_TIMEOUT_SECONDS}}", str(self.config.idle_timeout_seconds))
         html = html.replace("{{IDLE_FADE_SECONDS}}", str(self.config.idle_fade_seconds))
         html = html.replace("{{SLIDE_INTERVAL_SECONDS}}", str(self.config.slide_interval_seconds))
-        html = html.replace("{{HA_PROXY_PREFIX}}", self.config.ha_proxy_prefix)
         return web.Response(text=html, content_type="text/html")
 
     async def serve_photos(self, request: web.Request) -> web.Response:
@@ -166,11 +163,18 @@ class KioskServer:
     # ---- app assembly ----------------------------------------------------
     def build_app(self) -> web.Application:
         app = web.Application()
-        app.router.add_get("/", self.serve_frame)
+        # Engine routes FIRST (aiohttp matches in registration order), so they
+        # win over the HA catch-all below.
+        app.router.add_get("/frame/", self.serve_frame)
+        app.router.add_get("/frame", self.serve_frame)
         app.router.add_get("/photos.json", self.serve_photos)
-        prefix = self.config.ha_proxy_prefix
-        app.router.add_route("*", f"{prefix}/{{tail:.*}}", self.proxy_ha)
         app.router.add_get("/images/{path:.*}", self.serve_local_image)
+        # Everything else → HA, proxied at the ROOT. This is deliberate: HA's
+        # frontend references assets at absolute paths (/frontend_latest/...,
+        # /static/..., /api/...). Proxying under a subpath (/ha/) breaks those
+        # (the browser requests /frontend_latest/... which isn't proxied → 404
+        # → black screen). Root proxying keeps HA's absolute paths intact.
+        app.router.add_route("*", "/{tail:.*}", self.proxy_ha)
         return app
 
     async def close(self) -> None:

@@ -28,7 +28,6 @@ def _env_int(name: str, default: int) -> int:
 class Config:
     # --- Home Assistant ---
     ha_url: str = "http://localhost:8123"
-    ha_proxy_prefix: str = "/ha"          # path the proxy is served under
     strip_x_frame_options: bool = True     # required for cross-origin iframe
 
     # --- Server ---
@@ -55,7 +54,6 @@ class Config:
     def from_env(cls) -> "Config":
         return cls(
             ha_url=os.getenv("HA_URL", "http://localhost:8123").rstrip("/"),
-            ha_proxy_prefix=os.getenv("HA_PROXY_PREFIX", "/ha"),
             strip_x_frame_options=_env_bool("STRIP_X_FRAME_OPTIONS", True),
             host=os.getenv("HOST", "0.0.0.0"),
             port=_env_int("PORT", 8080),
