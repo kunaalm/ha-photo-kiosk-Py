@@ -1,4 +1,4 @@
-"""HTTP server: reverse-proxy for HA + frame page + /images.
+"""HTTP server: reverse-proxy for HA + frame page + /images + config service.
 
 Built on aiohttp because HA dashboards use WebSockets for live state — a
 stdlib http.server cannot forward them, and proxying HA without WS support
@@ -16,6 +16,7 @@ import aiohttp
 from aiohttp import web
 
 from .config import Config
+from .config_store import ConfigStore, EDITABLE_FIELDS
 from .sources import get_source
 
 log = logging.getLogger("kiosk-engine")
@@ -34,10 +35,13 @@ FRAME_BLOCKING_HEADERS = {"x-frame-options", "frame-ancestors"}
 
 
 class KioskServer:
-    def __init__(self, config: Config):
+    def __init__(self, config: Config, config_store: Optional[ConfigStore] = None):
         self.config = config
-        self.source = get_source(config)
-        self.ha_origin = config.ha_url  # e.g. http://192.168.20.12:8123
+        self.store = config_store or ConfigStore()
+        # Effective config = env defaults + file overrides (from the web service).
+        self.effective = self.store.effective_config()
+        self.source = get_source(self.effective)
+        self.ha_origin = self.effective.ha_url  # e.g. http://192.168.20.12:8123
         self._client: Optional[aiohttp.ClientSession] = None
 
     async def _get_client(self) -> aiohttp.ClientSession:
@@ -55,7 +59,7 @@ class KioskServer:
             downstream_path += "?" + request.query_string
 
         target = urljoin(self.ha_origin, downstream_path)
-        timeout = aiohttp.ClientTimeout(total=self.config.http_proxy_timeout)
+        timeout = aiohttp.ClientTimeout(total=self.effective.http_proxy_timeout)
 
         is_upgrade = request.headers.get("Upgrade", "").lower() == "websocket"
         if is_upgrade:
@@ -91,7 +95,7 @@ class KioskServer:
         await server_ws.prepare(request)
         client = await self._get_client()
         try:
-            async with client.ws_connect(target, timeout=self.config.http_proxy_timeout) as client_ws:
+            async with client.ws_connect(target, timeout=self.effective.http_proxy_timeout) as client_ws:
                 async def pump_s2c():
                     async for msg in client_ws:
                         if msg.type == aiohttp.WSMsgType.ERROR:
@@ -120,7 +124,7 @@ class KioskServer:
             k_l = k.lower()
             if k_l in RESPONSE_HEADERS_TO_DROP:
                 continue
-            if self.config.strip_x_frame_options and k_l in FRAME_BLOCKING_HEADERS:
+            if self.effective.strip_x_frame_options and k_l in FRAME_BLOCKING_HEADERS:
                 continue  # drop frame-blocking so the iframe is allowed
             # Rewrite any Location headers that would point back at bare HA.
             if k_l == "location" and v:
@@ -141,9 +145,9 @@ class KioskServer:
     async def serve_frame(self, request: web.Request) -> web.Response:
         # The frame page: loads HA in an iframe (proxied), and a slideshow layer.
         html = Path(__file__).with_name("frame.html").read_text()
-        html = html.replace("{{IDLE_TIMEOUT_SECONDS}}", str(self.config.idle_timeout_seconds))
-        html = html.replace("{{IDLE_FADE_SECONDS}}", str(self.config.idle_fade_seconds))
-        html = html.replace("{{SLIDE_INTERVAL_SECONDS}}", str(self.config.slide_interval_seconds))
+        html = html.replace("{{IDLE_TIMEOUT_SECONDS}}", str(self.effective.idle_timeout_seconds))
+        html = html.replace("{{IDLE_FADE_SECONDS}}", str(self.effective.idle_fade_seconds))
+        html = html.replace("{{SLIDE_INTERVAL_SECONDS}}", str(self.effective.slide_interval_seconds))
         return web.Response(text=html, content_type="text/html")
 
     async def serve_photos(self, request: web.Request) -> web.Response:
@@ -154,13 +158,40 @@ class KioskServer:
 
     async def serve_local_image(self, request: web.Request) -> web.Response:
         rel = request.match_info["path"]
-        base = Path(self.config.photo_dir).resolve()
+        base = Path(self.effective.photo_dir).resolve()
         full = (base / rel).resolve()
         if not full.is_relative_to(base) or not full.is_file():
             raise web.HTTPNotFound()
         data = full.read_bytes()
         import mimetypes
         return web.Response(body=data, content_type=mimetypes.guess_type(str(full))[0] or "application/octet-stream")
+
+    # ---- Config service (web UI + API) ----------------------------------
+    async def serve_config_page(self, request: web.Request) -> web.Response:
+        html = Path(__file__).with_name("config.html").read_text()
+        return web.Response(text=html, content_type="text/html")
+
+    async def get_config(self, request: web.Request) -> web.Response:
+        return web.json_response(self.store.public_state())
+
+    async def post_config(self, request: web.Request) -> web.Response:
+        try:
+            data = await request.json()
+        except Exception:
+            return web.json_response({"ok": False, "error": "invalid JSON"}, status=400)
+        # Validate types before persisting.
+        for k, v in data.items():
+            if k not in EDITABLE_FIELDS:
+                continue
+            t = EDITABLE_FIELDS[k]
+            if t == "int" and not isinstance(v, int):
+                return web.json_response({"ok": False, "error": f"{k} must be an integer"}, status=400)
+            if t == "bool" and not isinstance(v, bool):
+                return web.json_response({"ok": False, "error": f"{k} must be a boolean"}, status=400)
+            if t == "str" and not isinstance(v, str):
+                return web.json_response({"ok": False, "error": f"{k} must be a string"}, status=400)
+        self.store.save(data)
+        return web.json_response({"ok": True})
 
     # ---- app assembly ----------------------------------------------------
     def build_app(self) -> web.Application:
@@ -171,6 +202,11 @@ class KioskServer:
         app.router.add_get("/frame", self.serve_frame)
         app.router.add_get("/photos.json", self.serve_photos)
         app.router.add_get("/images/{path:.*}", self.serve_local_image)
+        # Config service (web UI + API).
+        app.router.add_get("/config/", self.serve_config_page)
+        app.router.add_get("/config", self.serve_config_page)
+        app.router.add_get("/api/config", self.get_config)
+        app.router.add_post("/api/config", self.post_config)
         # Everything else → HA, proxied at the ROOT. This is deliberate: HA's
         # frontend references assets at absolute paths (/frontend_latest/...,
         # /static/..., /api/...). Proxying under a subpath (/ha/) breaks those

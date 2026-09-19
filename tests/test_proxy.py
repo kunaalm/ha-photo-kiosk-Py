@@ -10,7 +10,16 @@ def _server(cfg_attrs):
     cfg = cfgmod.Config()
     for k, v in cfg_attrs.items():
         setattr(cfg, k, v)
-    return KioskServer(cfg)
+    s = KioskServer(cfg)
+    # The server reads from self.effective (store overrides on env defaults);
+    # mirror the test attrs there so header-rewrite tests see them.
+    for k, v in cfg_attrs.items():
+        if hasattr(s.effective, k):
+            setattr(s.effective, k, v)
+    # ha_origin is captured at construction from effective.ha_url; keep it in
+    # sync so _rewrite_location compares against the test's ha_url.
+    s.ha_origin = s.effective.ha_url
+    return s
 
 
 def test_drops_frame_blocking_headers_when_enabled():

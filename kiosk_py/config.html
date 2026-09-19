@@ -1,0 +1,92 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Kiosk Configuration</title>
+<style>
+  body { font-family: system-ui, sans-serif; background:#111; color:#eee; margin:0; padding:24px; }
+  h1 { font-size:20px; margin:0 0 4px; }
+  .sub { color:#888; font-size:13px; margin-bottom:20px; }
+  .card { background:#1c1c1c; border:1px solid #333; border-radius:8px; padding:20px; max-width:560px; }
+  label { display:block; font-size:13px; color:#aaa; margin:14px 0 4px; }
+  input, select { width:100%; box-sizing:border-box; padding:8px; border-radius:6px; border:1px solid #444; background:#222; color:#eee; font-size:14px; }
+  .hint { font-size:12px; color:#777; margin-top:3px; }
+  button { margin-top:20px; padding:10px 18px; border-radius:6px; border:0; background:#2f81f7; color:#fff; font-size:14px; cursor:pointer; }
+  button:hover { background:#3b8cff; }
+  #status { margin-top:14px; font-size:13px; }
+  .ok { color:#4caf50; } .err { color:#f44336; }
+</style>
+</head>
+<body>
+  <h1>HA Photo Kiosk — Configuration</h1>
+  <div class="sub">Settings are saved to the engine's config file and take effect on the next engine start.</div>
+  <div class="card">
+    <label>Home Assistant URL</label>
+    <input id="ha_url" placeholder="http://192.168.20.12:8123">
+    <div class="hint">Base URL of your Home Assistant instance.</div>
+
+    <label>Photo source</label>
+    <select id="photo_source">
+      <option value="local">Local directory</option>
+      <option value="http">HTTP catalog / feed</option>
+    </select>
+
+    <label>Photo directory (local source)</label>
+    <input id="photo_dir" placeholder="/photos">
+    <div class="hint">Path to a folder of JPG/PNG/WebP images inside the engine container.</div>
+
+    <label>Photo catalog URL (http source)</label>
+    <input id="photo_catalog_url" placeholder="https://.../photos.json">
+    <div class="hint">URL returning {"photos":[{"url":...}]} — e.g. a self-hosted album endpoint.</div>
+
+    <label>Idle timeout (seconds)</label>
+    <input id="idle_timeout_seconds" type="number" min="5" placeholder="120">
+    <div class="hint">No input for this long → switch to photo frame.</div>
+
+    <label>Slide interval (seconds)</label>
+    <input id="slide_interval_seconds" type="number" min="1" placeholder="10">
+
+    <label>Idle fade (seconds)</label>
+    <input id="idle_fade_seconds" type="number" min="0" placeholder="1">
+
+    <button onclick="save()">Save configuration</button>
+    <div id="status"></div>
+  </div>
+
+<script>
+function load() {
+  fetch("/api/config").then(r => r.json()).then(cfg => {
+    ["ha_url","photo_source","photo_dir","photo_catalog_url",
+     "idle_timeout_seconds","slide_interval_seconds","idle_fade_seconds"]
+      .forEach(k => { var el = document.getElementById(k); if (el) el.value = cfg[k]; });
+  }).catch(() => setStatus("Could not load config.", "err"));
+}
+
+function save() {
+  var body = {
+    ha_url: document.getElementById("ha_url").value,
+    photo_source: document.getElementById("photo_source").value,
+    photo_dir: document.getElementById("photo_dir").value,
+    photo_catalog_url: document.getElementById("photo_catalog_url").value,
+    idle_timeout_seconds: parseInt(document.getElementById("idle_timeout_seconds").value, 10),
+    slide_interval_seconds: parseInt(document.getElementById("slide_interval_seconds").value, 10),
+    idle_fade_seconds: parseInt(document.getElementById("idle_fade_seconds").value, 10),
+  };
+  fetch("/api/config", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(body),
+  }).then(r => r.json()).then(res => {
+    setStatus(res.ok ? "Saved. Restart the engine to apply." : "Error: " + (res.error || "unknown"), res.ok ? "ok" : "err");
+  }).catch(() => setStatus("Save failed.", "err"));
+}
+
+function setStatus(msg, cls) {
+  var s = document.getElementById("status");
+  s.textContent = msg;
+  s.className = cls;
+}
+load();
+</script>
+</body>
+</html>

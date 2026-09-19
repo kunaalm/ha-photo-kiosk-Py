@@ -3,10 +3,12 @@
 import argparse
 import asyncio
 import logging
+import os
 
 from aiohttp import web
 
 from kiosk_py.config import Config
+from kiosk_py.config_store import ConfigStore
 from kiosk_py.server import KioskServer
 
 
@@ -26,7 +28,7 @@ async def main() -> None:
     if args.port: cfg.port = args.port
     if args.ha_url: cfg.ha_url = args.ha_url.rstrip("/")
 
-    srv = KioskServer(cfg)
+    srv = KioskServer(cfg, config_store=ConfigStore(os.getenv("CONFIG_FILE", "/config/kiosk.json")))
     app = srv.build_app()
     runner = web.AppRunner(app)
     await runner.setup()
