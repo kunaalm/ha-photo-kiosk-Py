@@ -5,6 +5,10 @@ name: Publish Docker image
 # packages in this repo, so publishing from CI avoids needing a local PAT with
 # write:packages scope. Shipped on every main push (latest) and on vX.Y.Z tags
 # (versioned + latest).
+#
+# NOTE: the image name must be LOWERCASE — GHCR rejects uppercase tags, and
+# this repo's name contains a capital P (ha-photo-kiosk-Py). So the image is
+# ghcr.io/kunaalm/ha-photo-kiosk-py (lowercase 'py').
 
 on:
   push:
@@ -13,6 +17,7 @@ on:
 
 env:
   REGISTRY: ghcr.io
+  # Lowercased image name (GHCR requires lowercase repository names).
   IMAGE_NAME: ${{ github.repository }}
 
 jobs:
@@ -32,10 +37,22 @@ jobs:
           password: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Build + push (latest and/or versioned)
-        uses: docker/build-push-action@v6
-        with:
-          context: .
-          push: true
-          tags: |
-            ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:latest
-            ${{ startsWith(github.ref, 'refs/tags/') && format('{0}/{1}:{2}', env.REGISTRY, env.IMAGE_NAME, github.ref_name) || '' }}
+        run: |
+          set -euo pipefail
+          IMG="${REGISTRY}/$(echo "${IMAGE_NAME}" | tr 'A-Z' 'a-z')"
+          echo "pushing to ${IMG}"
+          # Always tag latest; also tag the version on v* tag pushes.
+          TAGS="-t ${IMG}:latest"
+          if [[ "${GITHUB_REF}" == refs/tags/* ]]; then
+            VER="${GITHUB_REF#refs/tags/}"
+            TAGS="${TAGS} -t ${IMG}:${VER}"
+          fi
+          docker build -t "${IMG}:build" .
+          docker tag "${IMG}:build" "${IMG}:latest"
+          if [[ "${GITHUB_REF}" == refs/tags/* ]]; then
+            docker tag "${IMG}:build" "${IMG}:${VER}"
+          fi
+          docker push "${IMG}:latest"
+          if [[ "${GITHUB_REF}" == refs/tags/* ]]; then
+            docker push "${IMG}:${VER}"
+          fi
