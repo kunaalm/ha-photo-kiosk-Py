@@ -1,0 +1,20 @@
+services:
+  kiosk-engine:
+    build: .
+    container_name: kiosk-engine
+    # localhost-only: the browser on the same box reaches it; nothing external.
+    ports:
+      - "127.0.0.1:8080:8080"
+    environment:
+      HA_URL: "${HA_URL:-http://192.168.20.12:8123}"
+      PHOTO_SOURCE: "${PHOTO_SOURCE:-local}"
+      PHOTO_DIR: "${PHOTO_DIR:-/photos}"
+      IDLE_TIMEOUT_SECONDS: "${IDLE_TIMEOUT_SECONDS:-120}"
+      SLIDE_INTERVAL_SECONDS: "${SLIDE_INTERVAL_SECONDS:-10}"
+    volumes:
+      - "${PHOTO_HOST_DIR:-./photos}:/photos:ro"
+      - kiosk-cache:/cache
+    restart: unless-stopped
+
+volumes:
+  kiosk-cache:

@@ -1,0 +1,16 @@
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+*.egg-info/
+.pytest_cache/
+
+# Env / secrets
+.env
+*.env
+!sample.env
+
+# Local runtime
+/cache/
+/photos/
+*.sqlite3

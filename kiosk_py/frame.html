@@ -1,0 +1,129 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>HA Photo Kiosk</title>
+<style>
+  html, body { margin:0; padding:0; width:100%; height:100%; overflow:hidden; background:#000; }
+  #ha-frame {
+    position:absolute; inset:0; width:100%; height:100%; border:0;
+    opacity:1; z-index:1;
+  }
+  #frame-layer {
+    position:absolute; inset:0; overflow:hidden; background:#000;
+    opacity:0; z-index:2; visibility:hidden;
+    transition: opacity {{IDLE_FADE_SECONDS}}s ease;
+  }
+  #frame-img {
+    position:absolute; min-width:100%; min-height:100%;
+    /* contain: whole photo visible, letterboxed like a real frame */
+    object-fit:contain; width:100%; height:100%;
+  }
+  #clock {
+    position:absolute; right:18px; bottom:14px; color:rgba(255,255,255,.75);
+    font-family:system-ui,sans-serif; font-size:13px; opacity:0; z-index:3;
+  }
+</style>
+</head>
+<body>
+  <iframe id="ha-frame" src="{{HA_PROXY_PREFIX}}/" ></iframe>
+  <div id="frame-layer">
+    <img id="frame-img" alt="" draggable="false">
+    <div id="clock"></div>
+  </div>
+
+<script>
+(function () {
+  "use strict";
+  var IDLE_TIMEOUT = parseInt("{{IDLE_TIMEOUT_SECONDS}}", 10) * 1000; // ms
+  var SLIDE_INTERVAL = parseInt("{{SLIDE_INTERVAL_SECONDS}}", 10) * 1000;
+  var haFrame  = document.getElementById("ha-frame");
+  var frameLayer = document.getElementById("frame-layer");
+  var frameImg = document.getElementById("frame-img");
+  var clockEl  = document.getElementById("clock");
+
+  // ---- slide deck -----------------------------------------------------
+  var deck = [];
+  var deckIdx = 0;
+
+  function loadDeck() {
+    var xhr = new XMLHttpRequest();
+    xhr.open("GET", "/photos.json", true);
+    xhr.onreadystatechange = function () {
+      if (xhr.readyState === 4 && xhr.status === 200) {
+        try {
+          var data = JSON.parse(xhr.responseText);
+          deck = (data.photos && data.photos.length) ? data.photos : [];
+          if (!deck.length) { showEmptyFrame(); }
+        } catch (e) { deck = []; showEmptyFrame(); }
+      }
+    };
+    xhr.send();
+  }
+
+  function showEmptyFrame() {
+    frameImg.style.display = "none";
+    frameImg.src = "";
+  }
+
+  function advanceSlide() {
+    if (!deck.length) return;
+    deckIdx = (deckIdx + 1) % deck.length;
+    frameImg.style.display = "";
+    frameImg.src = deck[deckIdx].url + "?t=" + Date.now(); // bust cache on rotation
+  }
+
+  function startSlideshow() {
+    loadDeck();
+    advanceSlide();
+    clockEl.textContent = new Date().toLocaleTimeString();
+    setInterval(advanceSlide, SLIDE_INTERVAL);
+    setInterval(function(){ clockEl.textContent = new Date().toLocaleTimeString(); }, 30000);
+  }
+
+  // ---- state machine (mirrors kiosk_py.state) -------------------------
+  var state = "active";            // "active" | "idle"
+  var idleSince = null;            // ms timestamp idle began
+  var lastInput = Date.now();
+
+  function setLayer(nextState) {
+    if (nextState === state) return;
+    state = nextState;
+    if (state === "idle") {
+      // letterbox fade the HA iframe out, fade photos in
+      frameLayer.style.visibility = "visible";
+      frameLayer.style.opacity = "1";
+      haFrame.style.opacity = "0";
+      clockEl.style.opacity = "1";
+      if (!deck.length) loadDeck();
+    } else {
+      frameLayer.style.opacity = "0";
+      haFrame.style.opacity = "1";
+      clockEl.style.opacity = "0";
+    }
+  }
+
+  function onInput() {
+    lastInput = Date.now();
+    idleSince = null;
+    if (state === "idle") setLayer("active"); // instant DB return
+  }
+
+  function startClock() {
+    var now = Date.now();
+    if (state === "active") {
+      if (idleSince === null) idleSince = now;
+      if (now - idleSince >= IDLE_TIMEOUT) setLayer("idle");
+    }
+  }
+
+  // Real input events → activity (mouse, touch, keyboard).
+  ["mousemove","mousedown","touchstart","touchmove","keydown","wheel","click","dblclick"]
+    .forEach(function (ev) { window.addEventListener(ev, onInput, { passive:true }); });
+
+  setInterval(startClock, 500);
+  startSlideshow();
+})();
+</script>
+</body>
+</html>
