@@ -64,6 +64,7 @@ parse_args() {
     while [ $# -gt 0 ]; do
         case "$1" in
             --from-source) MODE="source" ;;
+            --no-x) KIOSK_DISPLAY="headless" ;;
             --help|-h) echo "Usage: install.sh [--from-source]"; exit 0 ;;
             *) die "unknown option: $1 (try --help)" ;;
         esac
@@ -236,6 +237,45 @@ EOF
     log "engine systemd service installed + enabled."
 }
 
+# --- 5b. GUI stack (X + Chromium + autologin) — the kiosk's display ------
+# A kiosk is a physical display device: it must boot straight into the UI.
+# Ported from the original HA-Chromium-Kiosk approach — no display manager,
+# xinit + openbox-session on vt7, getty@tty1 autologin for the kiosk user.
+install_gui() {
+    [ "$KIOSK_DISPLAY" = "gui" ] || { log "skipping GUI stack (KIOSK_DISPLAY=headless)."; return 0; }
+    log "installing graphical stack (X server, Chromium, Openbox)..."
+    apt-get update -qq >/dev/null 2>&1
+    apt-get install -y -qq xorg xserver-xorg xinit openbox chromium unclutter curl netcat-openbsd \
+        >/dev/null 2>&1 || die "could not install graphical packages (xorg/chromium/openbox)."
+
+    # Auto-login the kiosk user on tty1 (no display manager, no password).
+    mkdir -p /etc/systemd/system/getty@tty1.service.d
+    cat > /etc/systemd/system/getty@tty1.service.d/override.conf <<EOF
+[Service]
+ExecStart=
+ExecStart=-/sbin/agetty --autologin $KIOSK_USER --noclear %I \$TERM
+Type=idle
+EOF
+    systemctl daemon-reload
+
+    # Openbox autostart launches the supervisor (which opens Chromium).
+    sudo -u "$KIOSK_USER" mkdir -p "$KIOSK_HOME/.config/openbox"
+    cat > "$KIOSK_HOME/.config/openbox/autostart" <<EOF
+# HA Photo Kiosk — start the supervisor (Chromium kiosk at the engine page).
+xset s off
+xset -dpms
+xset s noblank
+unclutter -idle 0 &
+$SUPERVISOR_BIN &
+EOF
+    chown -R "$KIOSK_USER":"$KIOSK_USER" "$KIOSK_HOME/.config"
+
+    # The kiosk user needs the tty group to grab the vt7 session.
+    usermod -aG tty "$KIOSK_USER"
+
+    log "graphical stack installed: boots to the kiosk on the physical display."
+}
+
 # --- 5. Supervisor + systemd --------------------------------------------
 install_supervisor() {
     log "installing supervisor script + systemd unit..."
@@ -342,6 +382,7 @@ print_banner() {
     echo ""
     echo -e "${BOLD}This script will:${NC}"
     echo -e " ${GREEN}*${NC} Create a dedicated kiosk user"
+    echo -e " ${GREEN}*${NC} Install the graphical stack (X server, Chromium, Openbox)"
     echo -e " ${GREEN}*${NC} Pull the engine container (or build from source)"
     echo -e " ${GREEN}*${NC} Install the display supervisor + systemd service"
     echo -e " ${GREEN}*${NC} Set up the web config service (with basic auth)"
@@ -367,6 +408,7 @@ main() {
     install_engine
     install_engine_service
     install_supervisor
+    install_gui
     setup_photos
     install_firewall
     install_auth

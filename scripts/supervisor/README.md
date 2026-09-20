@@ -61,10 +61,11 @@ sudo systemctl enable --now ha-photo-kiosk.service
 
 ## Headless note
 
-On a box with no physical display, point `DISPLAY` at an Xvfb instance
-(e.g. `Xvfb :0 -screen 0 1280x800x24`) and run the supervisor against it. On a
-real kiosk, `:0` is the physical display and the unit's `TTYPath=/dev/tty7`
-gives Chromium a clean input session.
+On a box with no physical display, install with `--no-x` (skips the GUI stack)
+and point `DISPLAY` at an Xvfb instance (e.g. `Xvfb :0 -screen 0 1280x800x24`)
+and run the supervisor against it. On a real kiosk, `:0` is the physical
+display and the unit's `TTYPath=/dev/tty7` gives Chromium a clean input
+session.
 
 ## Security note: Chromium sandbox
 

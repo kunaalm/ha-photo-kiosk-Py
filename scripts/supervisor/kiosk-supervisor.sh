@@ -18,7 +18,15 @@ ENGINE_READY_URL="${KIOSK_ENGINE_READY_URL:-http://localhost:8080/frame/}"
 ENGINE_WAIT_MAX="${KIOSK_ENGINE_WAIT_MAX:-120}"   # seconds to wait for engine
 ENGINE_WAIT_INTERVAL="${KIOSK_ENGINE_WAIT_INTERVAL:-2}"
 DISPLAY="${DISPLAY:-:0}"
-CHROMIUM_BIN="${KIOSK_CHROMIUM_BIN:-chromium-browser}"
+# Debian's chromium package installs `chromium`; older/Raspberry Pi OS uses
+# `chromium-browser`. Prefer whatever is installed, default to the common one.
+if command -v chromium >/dev/null 2>&1; then
+    CHROMIUM_BIN="${KIOSK_CHROMIUM_BIN:-chromium}"
+elif command -v chromium-browser >/dev/null 2>&1; then
+    CHROMIUM_BIN="${KIOSK_CHROMIUM_BIN:-chromium-browser}"
+else
+    CHROMIUM_BIN="${KIOSK_CHROMIUM_BIN:-chromium}"
+fi
 CHROMIUM_FLAGS="${KIOSK_CHROMIUM_FLAGS:---noerrdialogs --disable-infobars --kiosk --disable-session-crashed-bubble --disable-features=TranslateUI --no-first-run}"
 
 log() { echo "[kiosk-supervisor] $(date '+%H:%M:%S') $*"; }

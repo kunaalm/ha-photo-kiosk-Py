@@ -37,6 +37,13 @@ rm -f "$SUPERVISOR_BIN"
 systemctl daemon-reload
 log "supervisor removed."
 
+# --- Remove GUI stack (autologin + openbox autostart) -------------------
+log "removing kiosk autologin + openbox autostart..."
+rm -f /etc/systemd/system/getty@tty1.service.d/override.conf
+rm -f "$KIOSK_HOME/.config/openbox/autostart"
+systemctl daemon-reload
+log "GUI autologin removed."
+
 # --- Stop + remove engine container / source service --------------------
 if command -v docker >/dev/null 2>&1; then
     log "stopping + removing engine container..."

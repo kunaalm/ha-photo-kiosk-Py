@@ -10,13 +10,13 @@ Type=simple
 # Run as a dedicated kiosk user (create with: useradd -m kiosk)
 User=kiosk
 Group=kiosk
-ExecStart=/usr/local/bin/kiosk-supervisor.sh
-# The supervisor owns the display session. On a real kiosk this is the
-# physical display (:0); on a headless box point it at an Xvfb instance.
-Environment=DISPLAY=:0
+PAMName=login
 Environment=XDG_RUNTIME_DIR=/run/user/%U
-# Restart the supervisor itself if it dies (belt-and-braces on top of the
-# script's own Chromium-restart loop).
+# Start X on vt7 (no display manager) and run the Openbox session; Openbox's
+# autostart launches the supervisor, which opens Chromium at the kiosk page.
+ExecStart=/usr/bin/xinit /usr/bin/openbox-session -- :0 vt7 -nolisten tcp -nocursor -auth /var/run/kiosk.auth
+# Restart the whole X session if it dies (belt-and-braces on top of the
+# supervisor's own Chromium-restart loop).
 Restart=always
 RestartSec=5
 # Give the supervisor a clean TTY so Chromium can grab input.

@@ -39,8 +39,10 @@ curl -fsSL https://raw.githubusercontent.com/kunaalm/ha-photo-kiosk-Py/main/scri
 ```
 
 (Prefer to read first? `curl -fsSL <that URL>` shows you the whole script before
-you run it.) It pulls the pre-built engine container, sets up the display
-supervisor, and creates the kiosk user.
+you run it.) It installs the full graphical stack (X server, Chromium, Openbox),
+pulls the pre-built engine container, sets up the display supervisor, and
+creates the kiosk user — so the box boots straight into the kiosk on a
+physical display.
 
 Needs: a light Debian OS (Debian, or Raspberry Pi OS) and a reachable
 Home Assistant instance. **Docker is installed automatically if missing**

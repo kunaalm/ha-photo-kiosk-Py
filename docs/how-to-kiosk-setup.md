@@ -15,18 +15,21 @@ a thin host supervisor keeps Chromium alive.
 
 ## 1. Prerequisites
 
-- A light Debian OS (Debian / Raspberry Pi OS) with **Docker** installed.
+- A light Debian OS (Debian / Raspberry Pi OS) with a **physical display**
+  attached (the kiosk boots straight into the UI on it).
 - A reachable **Home Assistant** instance (e.g. `http://192.168.20.12:8123`).
 - Root/sudo access.
 
-> No Docker? You can still install the engine as a Python venv on the host
-> with `bash scripts/install.sh --from-source` — see the README.
+> **Docker and the graphical stack (X server, Chromium, Openbox) are installed
+> automatically by the installer** — you don't need them pre-installed. On a
+> box with no physical display, add `--no-x` to skip the GUI stack (headless).
 
 ## 2. Install
 
-Download the repo and run the installer. It pulls the published container from
-GHCR (no local build), creates the `kiosk` user, installs the supervisor +
-systemd unit, and sets up the photos dir.
+Download the repo and run the installer. It installs the graphical stack
+(X server, Chromium, Openbox), pulls the published container from GHCR (no
+local build), creates the `kiosk` user, installs the supervisor + systemd
+unit, and sets up the photos dir.
 
 ```bash
 git clone https://github.com/kunaalm/ha-photo-kiosk-Py.git

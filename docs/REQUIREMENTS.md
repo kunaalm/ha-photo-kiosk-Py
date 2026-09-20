@@ -144,7 +144,7 @@ regression:
 | R8–R11 config service | ✅ implemented |
 | R12 basic auth | ✅ implemented |
 | R13–R18 security/hardening | ✅ implemented |
-| R19–R24 install/deploy | ✅ implemented (released `v0.1.0`) |
+| R19–R24 install/deploy | ✅ implemented (released `v0.1.0`; installer now auto-installs Docker + the full GUI stack: X server, Chromium, Openbox, autologin) |
 | R25–R28 hobbyist presentation | ✅ implemented |
 | Test suite + VM harness | ✅ 48 tests; VM harness in `tests/vm-harness/` |
 
