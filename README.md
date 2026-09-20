@@ -149,5 +149,6 @@ HA_URL="http://192.168.20.12:8123" PHOTO_DIR="./photos" python app.py
 ## Status
 
 Working end-to-end: engine, supervisor, installer, web config + photo upload,
-and a real Chrome-based test harness. Google Photos integration and additional
-photo sources are in progress.
+a real Chrome-based test harness, and Google Photos via the Ambient API.
+Additional photo sources remain easy to add behind the pluggable
+`Source` interface.

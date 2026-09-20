@@ -1,101 +1,130 @@
-# Google Photos integration
+# Google Photos integration (Ambient API)
 
 Point the photo frame at your **own Google Photos library**. This uses the
-official **Google Photos Library API** (read-only) via an OAuth2 client.
+official **Google Photos Ambient API** — the successor to the Library API,
+built specifically for "view photos from your Google Photos library on
+connected devices" (i.e. exactly a photo frame).
 
-> **Honest status:** the code is implemented and unit-tested (with mocked
-> Google responses), but **not live-tested against a real Google account** —
-> it needs your OAuth2 credentials to exercise end-to-end, which aren't
-> available in CI. The flow below is the standard one; if you hit a snag, the
-> error is almost always a token scope or consent-screen issue (Section 5).
+> **Why Ambient and not the Libraries API?** The old `photo-library` scope
+> (`photoslibrary.readonly`) was **removed after March 31, 2025** — apps can
+> only keep accessing app-created content. Google now directs personal-photo
+> use to the **Ambient API** and the **Picker API**. Ambient is the right fit
+> here: it's for devices (like a kiosk) that *display* a user's photos, and its
+> device-code OAuth works great when there's no browser on the device.
+
+> **Honest status:** the code is implemented and unit-tested against the
+> **live Ambient discovery document**
+> (`https://photosambient.googleapis.com/$discovery/rest`), but it has **not
+> been live-tested against a real Google account** — that needs your OAuth2
+> credentials to exercise end-to-end. The flow below is the standard one per
+> Google's current docs; if you hit a snag it's almost always a consent-screen
+> or scope issue (Section 6).
 
 ## What you need
 
-1. A **Google Cloud project** with the Photos Library API enabled.
-2. An **OAuth2 client ID + secret** created in that project.
-3. A **refresh token** granting read access to your own library.
-
-These are real secrets. They're read from **environment variables** for the
-engine — never committed to the repo or the vault.
+1. A **Google Cloud project**.
+2. An **OAuth2 client ID + secret** — application type **"TVs and Limited
+   Input devices"** (this is what enables the device-code flow).
+3. An **Ambient API device** created in the engine once, then the user's
+   choice of which sources (albums) to share, made in the Google Photos app.
 
 ## 1. Create the Google Cloud client
 
 1. Go to [console.cloud.google.com](https://console.cloud.google.com) and
    create a project (or open an existing one).
-2. **APIs & Services → Library** — search for **Photos Library API** and
-   enable it.
-3. **APIs & Services → OAuth consent screen** — configure it (user type
-   "External", add your Google account as a test user).
-4. **APIs & Services → Credentials → Create Credentials → OAuth client ID**:
-   - Application type: **Web application** (or Desktop).
-   - Authorized redirect URI: `http://localhost` (the consent flow is
-     copy-paste, so no real callback server is needed).
+2. Open the **Google Photos Library API** for your project — in the API
+   console, enable the Photos Library API and its **Ambient API**.
+3. **OAuth consent screen** — configure it (user type "External", add your
+   Google account as a test user).
+4. **Credentials → Create Credentials → OAuth client ID**:
+   - **Application type: TVs and Limited Input devices** ⚠️ — use this exact
+     type. It enables the device-code (user_code + verification_url) flow
+     that a kiosk needs (no callback redirect URI involved).
    - Note the **Client ID** and **Client secret**.
 
-## 2. Get a refresh token
+## 2. Scope
 
-The engine talks to Google on its own (no browser), so it needs a *refresh*
-token, not a one-time access token. Get one by completing an OAuth consent
-flow once, manually, from your laptop:
+The Ambient API uses a single, dedicated scope:
 
-1. Build this authorization URL (replace the `CLIENT_ID` and `SCOPE`):
+```
+https://www.googleapis.com/auth/photosambient.mediaitems
+```
 
-   ```
-   https://accounts.google.com/o/oauth2/auth?client_id=CLIENT_ID&redirect_uri=http://localhost&response_type=code&scope=https://www.googleapis.com/auth/photoslibrary.readonly&access_type=offline&prompt=consent
-   ```
+The engine requests exactly this scope (with `offline` access so it receives
+a refresh token). No `photoslibrary.*` scopes — those are the removed ones.
 
-2. Open it in a browser, sign in as the Google account whose Photos you want
-   to show, approve consent.
-3. You'll be redirected to `http://localhost/?code=AUTHORIZATION_CODE`. Copy
-   the `code` value.
-4. Exchange it for tokens (from your laptop):
+## 3. Authorize + create a device
 
-   ```bash
-   curl -s -X POST https://oauth2.googleapis.com/token \
-     -d "code=AUTHORIZATION_CODE" \
-     -d "client_id=CLIENT_ID" \
-     -d "client_secret=CLIENT_SECRET" \
-     -d "redirect_uri=http://localhost" \
-     -d "grant_type=authorization_code"
-   ```
+Because this is a **TV / limited-input-device** flow, authorization is
+device-code: the engine (or you) starts the flow, Google returns a
+`user_code` and a `verification_url`, you approve from your phone/laptop, and
+the engine polls until approved. This is the *one-time* setup step.
 
-   The response has `access_token` and — because you used `access_type=offline`
-   — a long-lived **`refresh_token`**. Save the `refresh_token`.
+At runtime the ambient source does the following (see
+`kiosk_py/sources.py`, `AmbientSource`):
 
-## 3. Configure the engine
+1. **`POST /v1/devices`** with `{ "displayName": "Photo Frame" }` → creates a
+   device in your Photos account, returns its `id`.
+2. You pick which **sources** to share — in the **Google Photos app →
+   Device → the Photo Frame device** you just created, choose albums or
+   highlights.
+3. The engine polls **`GET /v1/devices/{id}`** until `mediaSourcesSet` is
+   `true`.
+4. It lists photos with **`GET /v1/mediaItems?deviceId={id}`** (paginated via
+   `pageToken`/`pageSize`, default 50, max 100).
+
+Each returned item has `id`, `name`, `createTime`, and a `mediaFile` with
+`baseUrl` (+ `thumbnailBaseUrl`, `backgroundBaseUrl`, `mimeType`).
+
+## 4. Configure the engine
 
 Point the engine at Google Photos and give it the credentials as environment
-variables (either in `docker-compose.override.yml`, a `.env`, or the systemd
-unit for a `--from-source` install):
+variables (in `docker-compose.override.yml`, a `.env`, or the systemd unit
+for a `--from-source` install):
 
 ```
 PHOTO_SOURCE=google-photos
 GOOGLE_CLIENT_ID=...
 GOOGLE_CLIENT_SECRET=...
-GOOGLE_REFRESH_TOKEN=...
-GOOGLE_ALBUM_ID=            # optional: blank shows your whole library
+GOOGLE_REFRESH_TOKEN=...     # captured after the first device-code approval
+GOOGLE_DEVICE_ID=...         # the device id from step 3
 ```
 
-Then set `photo_source` to **Google Photos** in the web config
-(`/config/`) and restart the engine.
+Then set `photo_source` to **Google Photos** in the web config (`/config/`)
+and restart the engine. If `GOOGLE_DEVICE_ID` is blank, the engine logs a
+clear message telling you to run the one-time device setup (Section 3) first.
 
-## 4. Optional: show one album
+## 5. Rendering: why the engine proxies the images
 
-To limit to a single album, grab its ID from the Library API
-(`GET https://photoslibrary.googleapis.com/v1/albums` with your access
-token), and set `GOOGLE_ALBUM_ID`.
+Ambient `mediaFile.baseUrl` values live on Google's CDN (`lh3...`) but a
+request to them **must include `Authorization: Bearer <access token>` in the
+header** — a bare `<img src="lh3...">` in the frame page cannot attach that
+header.
 
-## 5. Troubleshooting
+So instead of loading Google's CDN directly, the engine:
 
-- **"Too many requests" / token invalid** — refresh tokens for Google's
-  non-production "test user" flow expire after ~7 days unless the app is
-  published (`verification` in the API console). For a personal kiosk, just
-  re-run step 2 to get a fresh refresh token when this happens, or configure
-  the OAuth consent screen so your Google account isn't a "test user"
-  (publish the app as "In production" with just your user as an allowed
-  domain).
-- **No photos show** — confirm the grant scope includes
-  `photoslibrary.readonly`, and that the album ID (if set) is correct.
-- **Style of these URLs** — the frame page loads images directly from
-  Google's CDN (`lh3.googleusercontent.com`), which works cross-origin for
-  `<img>` tags (no proxy needed).
+1. Builds a sized URL from the base URL: `baseUrl =w<max-width>-h<max-height>`
+   (fit within bounds; Google also supports `=d` for full metadata and `=c`
+   crop — and offers `backgroundBaseUrl`, Google's own blurred fill).
+2. Points the frame at an internal route — `/gimg/<url-encoded URL>`.
+3. The engine fetches the bytes with the token attached and **streams them
+   back** to the frame, so Google photos render like local ones (same origin,
+   no CORS).
+
+## 6. Troubleshooting
+
+- **No photos after authorizing** — the user hasn't selected media sources
+  yet: open the Google Photos app → the device name → pick albums. The
+  engine only lists items once `mediaSourcesSet` is true.
+- **`devices.create` fails** — you created the OAuth client as the wrong
+  type. It must be **"TVs and Limited Input devices"**. On the wrong type the
+  device-code endpoint won't work.
+- **Refresh token invalid / expires** — Google's non-production "test user"
+  flow expires refresh tokens after ~7 days unless the app is published.
+  For a personal kiosk, re-run the one-time device flow, or configure the
+  OAuth consent screen so your Google account isn't limited to "test user"
+  (publish the app "In production" with your user as an allowed domain).
+- **Images 502 from /gimg/** — the access token couldn't be refreshed (check
+  the two secrets above), or the network can't reach `lh3.googleusercontent.com`.
+- **"Ambient API" not available in the console** — make sure Photos Library
+  API + Ambient are enabled for the project in the API console.

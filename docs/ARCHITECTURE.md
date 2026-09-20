@@ -93,7 +93,7 @@ mechanical additions. Implemented:
 | Source | What it is | How the frame loads it |
 |---|---|---|
 | `local` | A directory of images | Engine serves them at `/images/*` (same origin) |
-| `google-photos` | Your own Google Photos via OAuth2 | Images load directly from Google's CDN (`<img>` works cross-origin) |
+| `google-photos` | Your own Google Photos via the Ambient API (device-code OAuth, read-only) | Engine proxies each image at `/gimg/*` (Ambient CDN URLs need the token in the request header) |
 | `http` | Any URL/feed returning a JSON photo catalog | Direct URLs |
 
 ### 3d. Web config + upload, not filesystem edits

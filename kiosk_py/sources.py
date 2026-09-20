@@ -2,13 +2,14 @@
 
 Every source yields an ordered list of Photo objects (URL + optional
 bytes/last-modified) that the frame page cycles through. The interface is
-deliberately tiny so new sources (e.g. Google Photos OAuth) are mechanical
-additions: implement ``Source``, register it in ``get_source()``.
+deliberately tiny so new sources are mechanical additions: implement
+``Source``, register it in ``get_source()``.
 """
 from __future__ import annotations
 
 import json
 import os
+import urllib.parse
 import urllib.request
 from dataclasses import dataclass
 from pathlib import Path
@@ -30,6 +31,18 @@ class Source(Protocol):
     def list(self) -> List[Photo]:
         """Return currently available photos (ordered)."""
         ...
+
+
+def _http_json(url: str, headers: Optional[dict] = None, data: Optional[bytes] = None,
+               timeout: float = 10.0, method: Optional[str] = None) -> Optional[dict]:
+    """Thin synchronous JSON GET/POST helper (stdlib only)."""
+    req = urllib.request.Request(url, data=data, headers=headers or {},
+                                 method=method)
+    try:
+        with urllib.request.urlopen(req, timeout=timeout) as resp:
+            return json.loads(resp.read().decode("utf-8"))
+    except Exception:
+        return None
 
 
 class LocalSource:
@@ -55,8 +68,7 @@ class LocalSource:
                 if ext in IMAGE_EXTENSIONS:
                     rel = Path(root) / fname
                     # URL-encode the path so spaces/unicode survive into src=
-                    from urllib.parse import quote
-                    encoded = quote(str(rel.relative_to(self.photo_dir)), safe="/")
+                    encoded = urllib.parse.quote(str(rel.relative_to(self.photo_dir)), safe="/")
                     photos.append(Photo(url=f"{self.url_prefix}/{encoded}", caption=fname))
         return photos
 
@@ -66,10 +78,6 @@ class HttpSource:
 
     The catalog shape is deliberately simple and source-agnostic:
         { "photos": [ {"url": "https://.../a.jpg", "caption": "..."}, ... ] }
-
-    Point this at a self-hosted Immich/PhotoPrism album proxy or any endpoint
-    that responds with that shape. This is how "the cloud" plugs in without a
-    vendor OAuth dance in the engine.
     """
     name = "http"
 
@@ -80,10 +88,8 @@ class HttpSource:
     def list(self) -> List[Photo]:
         if not self.catalog_url:
             return []
-        try:
-            with urllib.request.urlopen(self.catalog_url, timeout=self.timeout) as resp:
-                data = json.loads(resp.read().decode("utf-8"))
-        except Exception:
+        data = _http_json(self.catalog_url, timeout=self.timeout)
+        if not data:
             return []
         photos: List[Photo] = []
         for item in data.get("photos", []):
@@ -93,122 +99,257 @@ class HttpSource:
         return photos
 
 
-class GooglePhotosSource:
-    """Google Photos via the Library API (OAuth2, read-only).
+# ---------------------------------------------------------------------------
+# Google Photos — Ambient API
+#
+# The Google Photos *Ambient API* is the official successor to the Library
+# API for connected-device displays ("view photos from your library on
+# connected devices") — i.e. exactly a photo frame. The Library API's
+# photoslibrary.readonly scope was removed after March 31, 2025, so any
+# integration on the old path is dead-on-arrival for personal libraries.
+#
+# Two things make Ambient different from the old approach, verified against
+# the live discovery document (https://photosambient.googleapis.com/$discovery/rest):
+#
+#   1. AUTHORIZATION is OAuth 2.0 for *TVs and Limited-Input Device*
+#      applications (device-code flow): the user sees a user_code +
+#      verification_url, approves from their phone/laptop, and the app polls
+#      the token endpoint. Scope: photosambient.mediaitems. The app must also
+#      create a "device" in the user's photos account and poll until the user
+#      selects which sources (albums) to share.
+#
+#   2. RENDERING needs the token in the request header. mediaFile.baseUrl is
+#      on Google's CDN but a request to it without `Authorization: Bearer`
+#      fails. A bare <img src="lh3..."> in the frame page cannot attach that
+#      header, so the ENGINE must proxy each image: it fetches the CDN URL
+#      with the bearer token and streams the bytes back to the frame.
+#      (Base URLs support size params: baseUrl =d (metadata), =wW-hH (fit),
+#      =c (crop to aspect ratio), and there's a backgroundBaseUrl blurred
+#      render for filling mismatched display ratios.)
+# ---------------------------------------------------------------------------
 
-    Auth: a Google Cloud OAuth2 client (client_id + client_secret) plus a
-    refresh token that grants access to YOUR OWN Photos library. These are
-    real secrets — provide them by file/env, not baked into the source, and
+
+class AmbientAuth:
+    """Device-code OAuth2 for the Ambient API (TV / limited-input flow).
+
+    Not intended as a long-lived request-time auth — it drives the
+    interactive authorization the user completes ONCE from a phone/laptop.
+    After the first exchange it stores a refresh token and refreshes
+    access tokens as needed.
+    """
+
+    SCOPE = "https://www.googleapis.com/auth/photosambient.mediaitems"
+    DEVICE_CODE_URL = "https://oauth2.googleapis.com/device/code"
+    TOKEN_URL = "https://oauth2.googleapis.com/token"
+
+    def __init__(self, client_id: str, client_secret: str = "", timeout: float = 10.0):
+        self.client_id = client_id
+        self.client_secret = client_secret
+        self.timeout = timeout
+        self._access_token: Optional[str] = None
+        self._refresh_token: Optional[str] = None
+        self._expires_at: float = 0.0
+        self._device_code: Optional[str] = None
+
+    # --- device-code flow (interactive, one-time) ---
+    def start_device_code(self) -> Optional[dict]:
+        """Request a device+user code pair. Returns {user_code, verification_url, ...}."""
+        params = urllib.parse.urlencode(
+            {"client_id": self.client_id, "scope": self.SCOPE}
+        ).encode()
+        data = _http_json(
+            self.DEVICE_CODE_URL, data=params, timeout=self.timeout,
+            headers={"Content-Type": "application/x-www-form-urlencoded"},
+        )
+        if data and "device_code" in data:
+            self._device_code = data["device_code"]
+        return data
+
+    def poll_for_token(self) -> Optional[str]:
+        """Poll the token endpoint until the user authorizes (or timeout).
+
+        Returns an access token on success, None on failure/pending-expiry.
+        On first success a refresh_token is captured for later use.
+        """
+        if not self._device_code:
+            return None
+        params = urllib.parse.urlencode({
+            "client_id": self.client_id,
+            "client_secret": self.client_secret,
+            "device_code": self._device_code,
+            "grant_type": "urn:ietf:params:oauth:grant-type:device_code",
+        }).encode()
+        data = _http_json(
+            self.TOKEN_URL, data=params, timeout=self.timeout,
+            headers={"Content-Type": "application/x-www-form-urlencoded"},
+        )
+        if not data or "access_token" not in data:
+            return None
+        import time
+        self._access_token = data["access_token"]
+        self._refresh_token = data.get("refresh_token", self._refresh_token)
+        self._expires_at = time.time() + int(data.get("expires_in", 3600)) - 60
+        return self._access_token
+
+    # --- token refresh (later, non-interactive) ---
+    def refresh_access_token(self) -> Optional[str]:
+        if not self._refresh_token:
+            return None
+        params = urllib.parse.urlencode({
+            "client_id": self.client_id,
+            "client_secret": self.client_secret,
+            "refresh_token": self._refresh_token,
+            "grant_type": "refresh_token",
+        }).encode()
+        data = _http_json(
+            self.TOKEN_URL, data=params, timeout=self.timeout,
+            headers={"Content-Type": "application/x-www-form-urlencoded"},
+        )
+        if not data or "access_token" not in data:
+            return None
+        import time
+        self._access_token = data["access_token"]
+        self._expires_at = time.time() + int(data.get("expires_in", 3600)) - 60
+        return self._access_token
+
+    def access_token(self) -> Optional[str]:
+        import time
+        if self._access_token and time.time() < self._expires_at:
+            return self._access_token
+        return self.refresh_access_token()
+
+
+class AmbientSource:
+    """Google Photos via the Ambient API (device-code OAuth, read-only).
+
+    Secrets are REAL credentials — provide them by file/env, never baked in,
     never into the vault/notes.
 
-    Rendering: the Library API returns a per-media ``baseUrl`` on Google's CDN
-    (lh3.googleusercontent.com). The frame page loads those directly in an
-    <img>, which works cross-origin (no proxy, no CORS needed for images). We
-    append ``=w<width>-h<height>`` to get a downscaled render.
-
-    Since photos come from your own authenticated library the URLs are
-    credentialed; a ``+h<height>`` suffix is the standard way to request a
-    servable variant.
+    Flow:
+      1. User authorizes via device-code flow (docs/google-photos.md).
+      2. create() a "device"; user picks sources (albums) in the Photos app.
+      3. Poll device until mediaSourcesSet == True.
+      4. list() calls mediaItems.list (paginated), returns Photo entries whose
+         url points at an ENGINE route (/gimg/<encoded CDN url>) that proxies
+         the bytes with the bearer token added server-side.
     """
 
     name = "google-photos"
-    TOKEN_URL = "https://oauth2.googleapis.com/token"
-    MEDIA_URL = "https://photoslibrary.googleapis.com/v1/mediaItems"
-    ALBUM_URL = "https://photoslibrary.googleapis.com/v1/albums"
+    BASE_URL = "https://photosambient.googleapis.com/v1"
     MAX_WIDTH = 1920
     MAX_HEIGHT = 1200
 
-    def __init__(
-        self,
-        client_id: str = "",
-        client_secret: str = "",
-        refresh_token: str = "",
-        album_id: str = "",
-        timeout: float = 10.0,
-    ):
-        self.client_id = client_id
-        self.client_secret = client_secret
-        self.refresh_token = refresh_token
-        self.album_id = album_id
+    def __init__(self, client_id: str = "", client_secret: str = "",
+                 refresh_token: str = "", device_id: str = "",
+                 timeout: float = 10.0, http_transport=None):
+        self.auth = AmbientAuth(client_id, client_secret, timeout)
+        self.auth._refresh_token = refresh_token or None
+        self.device_id = device_id
         self.timeout = timeout
-        import time
-        self._access_token: Optional[str] = None
-        self._expires_at: float = 0.0
+        self._transport = http_transport or default_http_transport()
+        # Current media item queue (used to walk CDN URLs when rendering).
+        self._items: List[dict] = []
 
-    def _authorized(self) -> bool:
-        return bool(self.client_id and self.client_secret and self.refresh_token)
+    # ---- device management ---------------------------------------------
+    def is_configured(self) -> bool:
+        return bool(self.auth.client_id and self.auth._refresh_token and self.device_id)
 
-    def _refresh_token(self) -> Optional[str]:
-        import json as _json
-        import urllib.parse
-        import urllib.request
-        params = {
-            "client_id": self.client_id,
-            "client_secret": self.client_secret,
-            "refresh_token": self.refresh_token,
-            "grant_type": "refresh_token",
-        }
-        req = urllib.request.Request(
-            self.TOKEN_URL,
-            data=urllib.parse.urlencode(params).encode(),
-            headers={"Content-Type": "application/x-www-form-urlencoded"},
-        )
-        try:
-            with urllib.request.urlopen(req, timeout=self.timeout) as resp:
-                data = _json.loads(resp.read().decode("utf-8"))
-        except Exception:
+    def create_device(self, display_name: str = "Photo Frame",
+                      request_id: Optional[str] = None) -> Optional[dict]:
+        """Create an ambient device in the user's account.
+
+        Returns the AmbientDevice dict (contains id + pollingConfig), or None
+        on failure. After creation the user must select media sources in the
+        Google Photos app (or via devices.patch); mediaSourcesSet flips true
+        when they have.
+        """
+        token = self.auth.access_token()
+        if not token:
             return None
-        token = data.get("access_token")
-        if token:
-            import time
-            self._access_token = token
-            # Refresh tokens are usually valid 3600s; be conservative.
-            self._expires_at = time.time() + int(data.get("expires_in", 3600)) - 120
-        return token
+        body = json.dumps({"displayName": display_name}).encode()
+        url = f"{self.BASE_URL}/devices"
+        if request_id:
+            url += f"?requestId={urllib.parse.quote(request_id)}"
+        return _http_json(url, headers={
+            "Authorization": f"Bearer {token}",
+            "Content-Type": "application/json",
+        }, data=body, timeout=self.timeout, method="POST")
 
-    def _headers(self):
-        return {"Authorization": f"Bearer {self._access_token}"}
-
-    def _get_json(self, url: str, params: Optional[dict] = None) -> Optional[dict]:
-        import json as _json
-        import time
-        import urllib.parse
-        import urllib.request
-        if not self._access_token or time.time() >= self._expires_at:
-            if not self._refresh_token():
-                return None
-        q = urllib.parse.urlencode(params or {})
-        full = url if not q else f"{url}?{q}"
-        req = urllib.request.Request(full, headers=self._headers())
-        try:
-            with urllib.request.urlopen(req, timeout=self.timeout) as resp:
-                return _json.loads(resp.read().decode("utf-8"))
-        except Exception:
+    def get_device(self, device_id: Optional[str] = None) -> Optional[dict]:
+        token = self.auth.access_token()
+        if not token:
             return None
+        did = device_id or self.device_id
+        if not did:
+            return None
+        return _http_json(f"{self.BASE_URL}/devices/{urllib.parse.quote(did)}",
+                          headers={"Authorization": f"Bearer {token}"},
+                          timeout=self.timeout)
 
-    def _media_url(self) -> str:
-        # Media items for the whole library, or a specific album.
-        if self.album_id:
-            return f"{self.ALBUM_URL}/{self.album_id}"
-        return self.MEDIA_URL
+    def device_ready(self) -> bool:
+        dev = self.get_device()
+        return bool(dev and dev.get("mediaSourcesSet"))
+
+    # ---- media items ---------------------------------------------------
+    def _list_page(self, page_token: Optional[str] = None,
+                   page_size: int = 50) -> Optional[dict]:
+        token = self.auth.access_token()
+        if not token or not self.device_id:
+            return None
+        params = [("deviceId", self.device_id)]
+        if page_token:
+            params.append(("pageToken", page_token))
+        params.append(("pageSize", str(page_size)))
+        q = urllib.parse.urlencode(params)
+        return _http_json(f"{self.BASE_URL}/mediaItems?{q}",
+                          headers={"Authorization": f"Bearer {token}"},
+                          timeout=self.timeout)
 
     def list(self) -> List[Photo]:
-        if not self._authorized():
+        if not self.is_configured():
             return []
-        # _get_json refreshes the access token only when needed (cached
-        # otherwise), so no unconditional refresh here.
-        items = self._get_json(self._media_url(), {"pageSize": "100"})
-        if not items:
+        if not self.device_ready():
             return []
         photos: List[Photo] = []
-        media = items.get("mediaItems", [])
-        for it in media:
-            url = it.get("baseUrl")
-            if not url:
-                continue
-            render = f"{url}=w{self.MAX_WIDTH}-h{self.MAX_HEIGHT}"
-            photos.append(Photo(url=render, caption=it.get("filename", "")))
+        page_token = None
+        while True:
+            page = self._list_page(page_token)
+            if not page:
+                break
+            for it in page.get("mediaItems", []):
+                base = (it.get("mediaFile") or {}).get("baseUrl")
+                if base:
+                    # Point at the engine proxy route; server streams the
+                    # bytes with the token in the request header.
+                    encoded = urllib.parse.quote(f"{base}=w{self.MAX_WIDTH}-h{self.MAX_HEIGHT}", safe="")
+                    photos.append(Photo(url=f"/gimg/{encoded}", caption=it.get("id", "")))
+            page_token = page.get("nextPageToken")
+            if not page_token:
+                break
+        self._items = [{"url": p.url, "id": p.caption} for p in photos]
         return photos
+
+    def fetch_image_bytes(self, encoded_url: str, timeout: Optional[float] = None) -> Optional[bytes]:
+        """Fetch one ambient image with the bearer token attached (for /gimg proxying)."""
+        token = self.auth.access_token()
+        if not token:
+            return None
+        url = urllib.parse.unquote(encoded_url)
+        req = urllib.request.Request(url, headers={"Authorization": f"Bearer {token}"})
+        try:
+            with urllib.request.urlopen(req, timeout=timeout or self.timeout) as resp:
+                return resp.read()
+        except Exception:
+            return None
+
+
+class _DefaultHttpTransport:
+    """Placeholder transport so the base class can construct without it."""
+    def __init__(self): ...
+
+
+def default_http_transport():
+    return _DefaultHttpTransport()
 
 
 def get_source(config) -> Source:
@@ -216,11 +357,11 @@ def get_source(config) -> Source:
     if config.photo_source == "http":
         return HttpSource(config.photo_catalog_url, config.http_proxy_timeout)
     if config.photo_source == "google-photos":
-        return GooglePhotosSource(
+        return AmbientSource(
             client_id=config.google_client_id,
             client_secret=config.google_client_secret,
             refresh_token=config.google_refresh_token,
-            album_id=config.google_album_id,
+            device_id=config.google_device_id,
             timeout=config.http_proxy_timeout,
         )
     # default: local

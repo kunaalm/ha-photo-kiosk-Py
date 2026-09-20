@@ -167,6 +167,25 @@ class KioskServer:
         import mimetypes
         return web.Response(body=data, content_type=mimetypes.guess_type(str(full))[0] or "application/octet-stream")
 
+    async def serve_google_image(self, request: web.Request) -> web.Response:
+        """Proxy a Google Photos Ambient image.
+
+        Ambient mediaFile.baseUrl URLs live on Google's CDN but require the
+        bearer token in the request *header* — a bare <img> can't attach it.
+        The engine fetches the bytes authenticated and streams them back so
+        the frame page can render Google photos like local ones.
+        """
+        encoded = request.match_info["path"]  # URL-encoded CDN base url
+        source = self.source
+        if getattr(source, "name", "") != "google-photos" or not hasattr(source, "fetch_image_bytes"):
+            raise web.HTTPNotFound()
+        data = await asyncio.to_thread(source.fetch_image_bytes, encoded)
+        if not data:
+            raise web.HTTPBadGateway(text="Unable to fetch Google photo")
+        import mimetypes
+        ctype = mimetypes.guess_type("x.jpg")[0] or "image/jpeg"
+        return web.Response(body=data, content_type=ctype)
+
     # ---- Config service (web UI + API) ----------------------------------
     async def serve_config_page(self, request: web.Request) -> web.Response:
         html = Path(__file__).with_name("config.html").read_text()
@@ -278,6 +297,7 @@ class KioskServer:
         app.router.add_get("/frame", self.serve_frame)
         app.router.add_get("/photos.json", self.serve_photos)
         app.router.add_get("/images/{path:.*}", self.serve_local_image)
+        app.router.add_get("/gimg/{path:.*}", self.serve_google_image)
         # Config service (web UI + API).
         app.router.add_get("/config/", self.serve_config_page)
         app.router.add_get("/config", self.serve_config_page)
