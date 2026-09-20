@@ -43,6 +43,20 @@ MODE="container"   # container | source
 log() { echo "[kiosk-install] $*"; }
 die() { echo "[kiosk-install] ERROR: $*" >&2; exit 1; }
 
+## UI COLORS (ASCII-safe, no unicode box-drawing — keeps terminal
+## compatibility across serial consoles / minimal TTYs). Disabled
+## automatically when stdout isn't a terminal (e.g. piped/logged output).
+if [ -t 1 ]; then
+    RED='\033[0;31m'
+    GREEN='\033[0;32m'
+    YELLOW='\033[0;33m'
+    CYAN='\033[0;36m'
+    BOLD='\033[1m'
+    NC='\033[0m'
+else
+    RED=''; GREEN=''; YELLOW=''; CYAN=''; BOLD=''; NC=''
+fi
+
 # --- CLI ----------------------------------------------------------------
 parse_args() {
     while [ $# -gt 0 ]; do
@@ -234,9 +248,41 @@ EOF
     log "  (You will be asked to change it on first login.)"
 }
 
+# --- Banner ---------------------------------------------------------------
+print_banner() {
+    echo -e "${CYAN}****************************************************************************************************${NC}"
+    echo "    __  _____       ________                         _                    __ __ _            __   "
+    echo "   / / / /   |     / ____/ /_  _________  ____ ___  (_)_  ______ ___     / //_/(_)___  _____/ /__ "
+    echo "  / /_/ / /| |    / /   / __ \\/ ___/ __ \\/ __ \`__ \\/ / / / / __ \`__ \\   / ,<  / / __ \\/ ___/ //_/ "
+    echo " / __  / ___ |   / /___/ / / / /  / /_/ / / / / / / / /_/ / / / / / /  / /| |/ / /_/ (__  ) ,<    "
+    echo "/_/ /_/_/  |_|   \\____/_/ /_/_/   \\____/_/ /_/ /_/_/\\__,_/_/ /_/ /_/  /_/ |_/_/\\____/____/_/|_|   "
+    echo "                                                                                                  "
+    echo -e "${BOLD}                        Setup and Install Script for HA Photo Kiosk${NC}              "
+    echo -e "${CYAN}****************************************************************************************************${NC}"
+    echo -e "${RED}${BOLD}***                               WARNING: USE AT YOUR OWN RISK                                  ***${NC}"
+    echo -e "${CYAN}****************************************************************************************************${NC}"
+    echo ""
+    echo -e "${BOLD}This script will:${NC}"
+    echo -e " ${GREEN}*${NC} Create a dedicated kiosk user"
+    echo -e " ${GREEN}*${NC} Pull the engine container (or build from source)"
+    echo -e " ${GREEN}*${NC} Install the display supervisor + systemd service"
+    echo -e " ${GREEN}*${NC} Set up the web config service (with basic auth)"
+    echo -e " ${GREEN}*${NC} Configure a firewall (SSH + engine port)"
+    echo ""
+    echo -e "* Please read the script before running it to understand what it does."
+    echo -e "* Use at your own risk. The author is not responsible for any damage or data loss."
+    # Only pause for confirmation when running interactively; a curl|bash pipe
+    # has no terminal to read from, so proceed straight through.
+    if [ -t 0 ]; then
+        echo -e "${BOLD}Press ${GREEN}[Enter]${NC}${BOLD} to continue or ${RED}[Ctrl+C]${NC}${BOLD} to exit${NC}"
+        read -n 1 -s
+    fi
+}
+
 # --- Main ----------------------------------------------------------------
 main() {
     parse_args "$@"
+    print_banner
     log "HA Photo Kiosk installer starting (mode=$MODE)."
     check_prereqs
     install_user
