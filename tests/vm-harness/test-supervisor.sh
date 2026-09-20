@@ -18,7 +18,7 @@ HA_URL="http://10.0.2.2:8123" \
 PHOTO_DIR="/opt/kiosk/photos" \
 IDLE_TIMEOUT_SECONDS=8 \
 SLIDE_INTERVAL_SECONDS=3 \
-.venv/bin/python app.py --port 8080 >/tmp/engine.log 2>&1 &
+.venv/bin/python apps/app.py --port 8080 >/tmp/engine.log 2>&1 &
 sleep 3
 echo "engine: $(curl -s -o /dev/null -w '%{http_code}' http://localhost:8080/frame/)"
 
@@ -27,7 +27,7 @@ DISPLAY=:99 KIOSK_ENGINE_URL="http://localhost:8080/frame/" \
   KIOSK_ENGINE_READY_URL="http://localhost:8080/frame/" \
   KIOSK_ENGINE_WAIT_MAX=30 \
   KIOSK_CHROMIUM_BIN="chromium-browser" \
-  nohup bash supervisor/kiosk-supervisor.sh >/tmp/supervisor.log 2>&1 &
+  nohup bash scripts/supervisor/kiosk-supervisor.sh >/tmp/supervisor.log 2>&1 &
 SUP_PID=$!
 echo "supervisor pid=$SUP_PID"
 sleep 12

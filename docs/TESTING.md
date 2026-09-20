@@ -79,7 +79,7 @@ the `Brotli` package → 502 on proxied HA. **Fix:** add `Brotli` to requirement
 
 ## Supervisor verified with a real browser
 
-The host-side supervisor (`supervisor/kiosk-supervisor.sh`) was tested with
+The host-side supervisor (`scripts/supervisor/kiosk-supervisor.sh`) was tested with
 **actual Chromium** in the VM harness (`tests/vm-harness/test-supervisor.sh`),
 not a stub. Verified:
 

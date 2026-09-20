@@ -8,7 +8,7 @@ COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
 COPY kiosk_py/ kiosk_py/
-COPY app.py .
+COPY apps/app.py app.py
 
 # Only reachable from the kiosk box itself (localhost). The engine never
 # listens on a routable interface.

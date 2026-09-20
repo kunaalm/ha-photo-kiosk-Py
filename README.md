@@ -35,7 +35,7 @@ room displays. Set it and forget it.
 Pipe the installer straight from GitHub — no clone, no compile:
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/kunaalm/ha-photo-kiosk-Py/main/install.sh | sudo bash
+curl -fsSL https://raw.githubusercontent.com/kunaalm/ha-photo-kiosk-Py/main/scripts/install.sh | sudo bash
 ```
 
 (Prefer to read first? `curl -fsSL <that URL>` shows you the whole script before
@@ -109,8 +109,8 @@ dashboard again; leave it alone and it's a photo frame.
 ## Uninstall
 
 ```bash
-sudo bash uninstall.sh            # removes everything
-sudo REMOVE_DATA=1 bash uninstall.sh   # also delete photos + config
+sudo bash scripts/uninstall.sh            # removes everything
+sudo REMOVE_DATA=1 bash scripts/uninstall.sh   # also delete photos + config
 ```
 
 ## How it works (for the curious)
@@ -123,14 +123,14 @@ sudo REMOVE_DATA=1 bash uninstall.sh   # also delete photos + config
   multiplexes dashboard (proxied) and photos. This is why it's instant.
 
 Full details: [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md),
-[TESTING.md](TESTING.md).
+[docs/TESTING.md](docs/TESTING.md).
 
 ## Options at install time
 
 - `| sudo bash` with the extra flag `--from-source` at the end — installs the
   engine as a Python venv on the host instead of a container (clones the repo;
   for hacking on the code, or boxes without Docker).
-- `sudo HA_URL="http://..." bash install.sh` — pre-seed the Home Assistant
+- `sudo HA_URL="http://..." bash scripts/install.sh` — pre-seed the Home Assistant
   URL at install time (otherwise set it in the web config).
 
 ## Sample photos
@@ -143,7 +143,7 @@ upload your own.
 ```bash
 python3 -m venv .venv && source .venv/bin/activate
 pip install -r requirements.txt
-HA_URL="http://192.168.20.12:8123" PHOTO_DIR="./photos" python app.py
+HA_URL="http://192.168.20.12:8123" PHOTO_DIR="./photos" python apps/app.py
 # open http://localhost:8080/
 ```
 

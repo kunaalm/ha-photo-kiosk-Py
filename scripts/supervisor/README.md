@@ -39,10 +39,10 @@ useradd -m kiosk
 
 # 2. Install the supervisor script into the kiosk user's home
 sudo -u kiosk mkdir -p ~kiosk/bin
-sudo install -m 0755 supervisor/kiosk-supervisor.sh ~kiosk/bin/kiosk-supervisor.sh
+sudo install -m 0755 scripts/supervisor/kiosk-supervisor.sh ~kiosk/bin/kiosk-supervisor.sh
 
 # 3. Install + enable the systemd unit (reads the script from ~kiosk)
-sudo install -m 0644 supervisor/ha-photo-kiosk.service /etc/systemd/system/
+sudo install -m 0644 scripts/supervisor/ha-photo-kiosk.service /etc/systemd/system/
 sudo systemctl daemon-reload
 sudo systemctl enable --now ha-photo-kiosk.service
 ```

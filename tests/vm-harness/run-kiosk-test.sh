@@ -26,7 +26,7 @@ HA_URL="http://10.0.2.2:8123" \
 PHOTO_DIR="/opt/kiosk/photos" \
 IDLE_TIMEOUT_SECONDS=8 \
 SLIDE_INTERVAL_SECONDS=3 \
-.venv/bin/python app.py --port 8080 >/tmp/engine.log 2>&1 &
+.venv/bin/python apps/app.py --port 8080 >/tmp/engine.log 2>&1 &
 ENGINE_PID=$!
 sleep 3
 echo "engine pid=$ENGINE_PID"

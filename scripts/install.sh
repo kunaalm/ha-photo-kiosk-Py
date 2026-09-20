@@ -8,7 +8,7 @@
 #
 # Pipeable straight from GitHub — no clone needed:
 #
-#     curl -fsSL https://raw.githubusercontent.com/kunaalm/ha-photo-kiosk-Py/main/install.sh | sudo bash
+#     curl -fsSL https://raw.githubusercontent.com/kunaalm/ha-photo-kiosk-Py/main/scripts/install.sh | sudo bash
 #
 # (Inspect it first if you like: curl that URL, read the file, then run it.)
 #
@@ -157,7 +157,7 @@ Wants=network-online.target
 Type=simple
 User=$KIOSK_USER
 Group=$KIOSK_USER
-ExecStart=$ENGINE_SRC_DIR/.venv/bin/python $ENGINE_SRC_DIR/app.py
+ExecStart=$ENGINE_SRC_DIR/.venv/bin/python $ENGINE_SRC_DIR/apps/app.py
 Environment=PORT=$ENGINE_PORT
 Environment=HA_URL=http://localhost:8123
 Environment=PHOTO_DIR=/photos
@@ -176,8 +176,8 @@ EOF
 # --- 5. Supervisor + systemd --------------------------------------------
 install_supervisor() {
     log "installing supervisor script + systemd unit..."
-    fetch "supervisor/kiosk-supervisor.sh"
-    fetch "supervisor/ha-photo-kiosk.service"
+    fetch "scripts/supervisor/kiosk-supervisor.sh"
+    fetch "scripts/supervisor/ha-photo-kiosk.service"
     install -m 0755 "$INSTALL_DIR/kiosk-supervisor.sh" "$SUPERVISOR_BIN"
     # The kiosk user owns its whole home, including the supervisor it runs.
     chown "$KIOSK_USER":"$KIOSK_USER" "$SUPERVISOR_BIN" "$KIOSK_HOME/bin"

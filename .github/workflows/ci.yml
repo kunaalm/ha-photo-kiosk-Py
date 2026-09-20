@@ -20,4 +20,4 @@ jobs:
       - name: Run tests
         run: python -m pytest -v
       - name: Syntax check
-        run: python -m py_compile app.py kiosk_py/*.py
+        run: python -m py_compile apps/app.py kiosk_py/*.py

@@ -106,7 +106,7 @@ secrets; the config store is deliberately whitelisted to non-secret fields).
 ## 4. Implementation map
 
 ```
-app.py                      # entry point — CLI bootstrap (ENV -> Config -> KioskServer)
+apps/app.py                # entry point — CLI bootstrap (ENV -> Config -> KioskServer)
 kiosk_py/
   config.py                 # dataclass Config, built from env (12-factor)
   config_store.py           # persistent JSON config; file overrides env; merge-on-save
@@ -115,7 +115,7 @@ kiosk_py/
   server.py                 # the HTTP app: HA reverse-proxy, /frame/, /images, /config, /api
   frame.html                # the kiosk page — iframe(HA) + slideshow + idle JS
   config.html               # the web config/upload page
-supervisor/
+scripts/supervisor/
   kiosk-supervisor.sh       # wait for engine -> launch Chromium -> restart on exit
   ha-photo-kiosk.service    # systemd unit (Restart=always, kiosk user, display)
 tests/                      # unit tests (headless, CI)
@@ -126,7 +126,7 @@ tests/                      # unit tests (headless, CI)
   test_google_source.py     # Google source (mocked no-network)
   test_upload.py            # upload validation (magic bytes, safe names)
 tests/vm-harness/           # real-browser tests (manual; need KVM + real HA)
-install.sh / uninstall.sh   # one-command install / remove
+scripts/install.sh / uninstall.sh   # one-command install / remove
 Dockerfile / docker-compose.yml
 .github/workflows/ci.yml, docker-publish.yml
 ```
@@ -179,7 +179,7 @@ Chrome's DevTools Protocol).
 
 ## 6. Install & config flow
 
-1. `install.sh` — pulls the published container, creates the kiosk user,
+1. `scripts/install.sh` — pulls the published container, creates the kiosk user,
    installs the supervisor systemd unit, sets up the photos dir. Points the
    user to configure from a **laptop**, not the kiosk itself.
 2. Laptop opens `http://<kiosk-ip>:8080/config/` — sets HA URL, idle timeout,

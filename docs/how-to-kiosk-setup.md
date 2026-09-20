@@ -19,7 +19,7 @@ a thin host supervisor keeps Chromium alive.
 - Root/sudo access.
 
 > No Docker? You can still install the engine as a Python venv on the host
-> with `bash install.sh --from-source` — see the README.
+> with `bash scripts/install.sh --from-source` — see the README.
 
 ## 2. Install
 
@@ -30,7 +30,7 @@ systemd unit, and sets up the photos dir.
 ```bash
 git clone https://github.com/kunaalm/ha-photo-kiosk-Py.git
 cd ha-photo-kiosk-Py
-sudo bash install.sh
+sudo bash scripts/install.sh
 ```
 
 The installer prints a summary and — importantly — **tells you to open the web
@@ -136,7 +136,7 @@ For how everything works under the hood, see
 ## Uninstall
 
 ```bash
-sudo bash uninstall.sh
+sudo bash scripts/uninstall.sh
 ```
 
 Add `REMOVE_DATA=1` to also delete the photos and config dirs.
