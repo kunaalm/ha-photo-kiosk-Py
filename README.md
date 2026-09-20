@@ -77,8 +77,9 @@ the frame.
 
 ![Upload photos from the config page](docs/images/vm-test/howto-config-photos.png)
 
-To show your own **Google Photos**, sync them into the kiosk's photo folder
-with a tool like rclone — the kiosk reads local files only (see
+To show your own **Google Photos**, enable the built-in **Google Photos
+sync** from the web config — the kiosk runs rclone on the host to pull your
+albums into the photo folder, no cloud API involved (see
 [docs/google-photos.md](docs/google-photos.md)). Otherwise the **Local
 directory** source is the default (upload via the web config, or mount a
 folder).

@@ -1,0 +1,9 @@
+[Unit]
+Description=HA Photo Kiosk Google Photos sync trigger watcher
+
+[Path]
+# When the config UI writes sync-trigger, run the sync immediately.
+PathExists=/home/kiosk/config/sync-trigger
+
+[Install]
+WantedBy=multi-user.target

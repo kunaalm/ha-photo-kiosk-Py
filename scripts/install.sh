@@ -34,6 +34,8 @@ CONFIG_HOST_DIR="${CONFIG_HOST_DIR:-$KIOSK_HOME/config}"
 ENGINE_SRC_DIR="${ENGINE_SRC_DIR:-$KIOSK_HOME/engine}"
 INSTALL_DIR="${INSTALL_DIR:-$KIOSK_HOME/install-files}"
 SUPERVISOR_BIN="${SUPERVISOR_BIN:-$KIOSK_HOME/bin/kiosk-supervisor.sh}"
+GP_SYNC_BIN="${GP_SYNC_BIN:-$KIOSK_HOME/bin/kiosk-gphotos-sync.sh}"
+INSTALL_RCLONE="${INSTALL_RCLONE:-1}"   # 1 = install rclone for Google Photos sync
 IMAGE="${IMAGE:-ghcr.io/kunaalm/ha-photo-kiosk-py:latest}"
 # Where the installer pulls companion files from (a tag, not main, for pinning).
 REPO_RAW="${REPO_RAW:-https://raw.githubusercontent.com/kunaalm/ha-photo-kiosk-Py/main}"
@@ -248,6 +250,36 @@ EOF
     log "  (You will be asked to change it on first login.)"
 }
 
+# --- 9. Google Photos sync (rclone + systemd) ----------------------------
+install_gphotos_sync() {
+    log "installing Google Photos sync (rclone)..."
+    if [ "${INSTALL_RCLONE:-1}" = "1" ]; then
+        command -v rclone >/dev/null 2>&1 || {
+            apt-get install -y rclone >/dev/null 2>&1 || log "could not install rclone (install manually)."
+        }
+    else
+        command -v rclone >/dev/null 2>&1 || log "rclone not installed (skipping install per INSTALL_RCLONE=0)."
+    fi
+    # Sync script + systemd units live in the kiosk home / systemd dir.
+    fetch "scripts/supervisor/kiosk-gphotos-sync.sh"
+    fetch "scripts/supervisor/kiosk-gphotos-sync.service"
+    fetch "scripts/supervisor/kiosk-gphotos-sync.timer"
+    fetch "scripts/supervisor/kiosk-gphotos-sync.path"
+    install -m 0755 "$INSTALL_DIR/kiosk-gphotos-sync.sh" "$GP_SYNC_BIN"
+    chown "$KIOSK_USER":"$KIOSK_USER" "$GP_SYNC_BIN" "$KIOSK_HOME/bin"
+    # Substitute the kiosk user/home into the units, write to systemd.
+    for u in service timer path; do
+        sed -e "s|User=kiosk|User=$KIOSK_USER|" \
+            -e "s|Group=kiosk|Group=$KIOSK_USER|" \
+            -e "s|/home/kiosk/|$KIOSK_HOME/|g" \
+            "$INSTALL_DIR/kiosk-gphotos-sync.$u" > /etc/systemd/system/kiosk-gphotos-sync.$u
+    done
+    systemctl daemon-reload
+    systemctl enable kiosk-gphotos-sync.timer >/dev/null 2>&1
+    systemctl enable kiosk-gphotos-sync.path >/dev/null 2>&1
+    log "Google Photos sync installed: rclone + systemd timer (enable in web config)."
+}
+
 # --- Banner ---------------------------------------------------------------
 print_banner() {
     echo -e "${CYAN}****************************************************************************************************${NC}"
@@ -292,6 +324,7 @@ main() {
     setup_photos
     install_firewall
     install_auth
+    install_gphotos_sync
 
     # Start the engine now (container starts via compose; source via systemd).
     if [ "$MODE" = "source" ]; then

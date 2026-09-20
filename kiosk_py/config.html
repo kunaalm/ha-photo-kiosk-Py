@@ -74,6 +74,29 @@
     <div id="upload_status"></div>
 
     <div id="photo_list" style="margin-top:12px"></div>
+
+    <hr style="border:none;border-top:1px solid #333;margin:20px 0">
+
+    <h2 style="font-size:16px;margin:0 0 8px">Google Photos sync</h2>
+    <div class="sub" style="margin-bottom:12px">Sync your Google Photos into the kiosk's photo folder via rclone (runs on the kiosk host). First run <code>rclone config</code> to set up the remote, then enable below.</div>
+
+    <label>Enabled</label>
+    <select id="sync_enabled">
+      <option value="false">Disabled</option>
+      <option value="true">Enabled</option>
+    </select>
+
+    <label>rclone remote name</label>
+    <input id="sync_remote" placeholder="gphotos">
+    <div class="hint">The remote you configured with <code>rclone config</code>.</div>
+
+    <label>Source path</label>
+    <input id="sync_source_path" placeholder="media/by-month">
+    <div class="hint">Sync runs on a schedule (systemd timer, hourly) and when you hit "Sync now".</div>
+
+    <div id="sync_status" style="margin-top:14px;font-size:13px"></div>
+    <button onclick="saveSync()">Save sync config</button>
+    <button onclick="triggerSync()" style="margin-left:8px">Sync now</button>
   </div>
 
 <script>
@@ -193,9 +216,65 @@ function deletePhoto(name, row) {
     }).catch(function(){});
 }
 
+// ---- Google Photos sync ----
+function loadSync() {
+  fetch("/api/sync").then(r => r.json()).then(s => {
+    document.getElementById("sync_enabled").value = s.enabled ? "true" : "false";
+    document.getElementById("sync_remote").value = s.remote || "";
+    document.getElementById("sync_source_path").value = s.source_path || "";
+    renderSyncStatus(s);
+  }).catch(function(){});
+}
+
+function renderSyncStatus(s) {
+  var el = document.getElementById("sync_status");
+  if (s.state === "ok" && s.last_run) {
+    el.textContent = "Last sync: " + s.last_run + " (" + s.photo_count + " photos)";
+    el.className = "ok";
+  } else if (s.state === "error" && s.last_error) {
+    el.textContent = "Last sync failed (" + s.last_run + "): " + s.last_error;
+    el.className = "err";
+  } else if (s.state === "running") {
+    el.textContent = "Sync in progress...";
+    el.className = "";
+  } else {
+    el.textContent = "No sync has run yet. Enable + Sync now to start.";
+    el.className = "";
+  }
+}
+
+function saveSync() {
+  var body = {
+    enabled: document.getElementById("sync_enabled").value === "true",
+    remote: document.getElementById("sync_remote").value,
+    source_path: document.getElementById("sync_source_path").value,
+  };
+  fetch("/api/sync", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(body),
+  }).then(r => r.json()).then(res => {
+    var el = document.getElementById("sync_status");
+    el.textContent = res.ok ? "Sync config saved." : ("Error: " + (res.error || "unknown"));
+    el.className = res.ok ? "ok" : "err";
+  }).catch(() => { var el = document.getElementById("sync_status"); el.textContent = "Save failed."; el.className = "err"; });
+}
+
+function triggerSync() {
+  var el = document.getElementById("sync_status");
+  el.textContent = "Requesting sync...";
+  el.className = "";
+  fetch("/api/sync/trigger", { method: "POST" })
+    .then(r => r.json()).then(res => {
+      el.textContent = res.ok ? "Sync requested. Check back in a minute." : ("Error: " + (res.error || "unknown"));
+      el.className = res.ok ? "ok" : "err";
+    }).catch(() => { el.textContent = "Request failed."; el.className = "err"; });
+}
+
 load();
 loadPhotos();
 checkMustChange();
+loadSync();
 </script>
 </body>
 </html>

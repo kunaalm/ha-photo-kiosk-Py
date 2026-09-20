@@ -20,6 +20,7 @@ from .config import Config
 from .config_store import ConfigStore, EDITABLE_FIELDS
 from .sources import IMAGE_EXTENSIONS, get_source
 from .auth import AuthStore, parse_basic_auth
+from .sync import SyncStore
 
 log = logging.getLogger("kiosk-engine")
 
@@ -38,10 +39,12 @@ FRAME_BLOCKING_HEADERS = {"x-frame-options", "frame-ancestors"}
 
 class KioskServer:
     def __init__(self, config: Config, config_store: Optional[ConfigStore] = None,
-                 auth_store: Optional[AuthStore] = None):
+                 auth_store: Optional[AuthStore] = None,
+                 sync_store: Optional[SyncStore] = None):
         self.config = config
         self.store = config_store or ConfigStore()
         self.auth = auth_store or AuthStore()
+        self.sync = sync_store or SyncStore()
         # Effective config = env defaults + file overrides (from the web service).
         self.effective = self.store.effective_config()
         self.source = get_source(self.effective)
@@ -265,6 +268,41 @@ class KioskServer:
             return denied
         return web.json_response({"must_change": self.auth.must_change()})
 
+    # ---- Google Photos sync (status + control) -------------------------
+    async def get_sync(self, request: web.Request) -> web.Response:
+        """Current sync config + status (for the config UI)."""
+        denied = self._require_auth(request)
+        if denied:
+            return denied
+        return web.json_response(self.sync.public_state())
+
+    async def post_sync(self, request: web.Request) -> web.Response:
+        """Update sync config (enabled/remote/source/interval)."""
+        denied = self._require_auth(request)
+        if denied:
+            return denied
+        try:
+            data = await request.json()
+        except Exception:
+            return web.json_response({"ok": False, "error": "invalid JSON"}, status=400)
+        # Validate types.
+        for k, v in data.items():
+            if k == "enabled" and not isinstance(v, bool):
+                return web.json_response({"ok": False, "error": "enabled must be a boolean"}, status=400)
+            if k in ("remote", "source_path") and not isinstance(v, str):
+                return web.json_response({"ok": False, "error": f"{k} must be a string"}, status=400)
+        self.sync.save_config(data)
+        log.info("sync config updated")
+        return web.json_response({"ok": True})
+
+    async def trigger_sync(self, request: web.Request) -> web.Response:
+        """Ask the host sync service to run now."""
+        denied = self._require_auth(request)
+        if denied:
+            return denied
+        self.sync.request_sync()
+        return web.json_response({"ok": True, "message": "sync requested"})
+
     # ---- Photo upload / management API ----------------------------------
     def _safe_photo_name(self, filename: str) -> Optional[str]:
         """Sanitize an uploaded filename: basename only, image extension only,
@@ -365,6 +403,10 @@ class KioskServer:
         app.router.add_post("/api/config", self.post_config)
         app.router.add_get("/api/auth/status", self.auth_status)
         app.router.add_post("/api/auth/change", self.change_password)
+        # Google Photos sync (status + control), behind basic auth.
+        app.router.add_get("/api/sync", self.get_sync)
+        app.router.add_post("/api/sync", self.post_sync)
+        app.router.add_post("/api/sync/trigger", self.trigger_sync)
         # Photo upload / management API — behind basic auth.
         app.router.add_get("/api/photos", self.serve_photos_list)
         app.router.add_post("/api/photos", self.upload_photo)

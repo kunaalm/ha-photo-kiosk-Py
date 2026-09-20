@@ -17,6 +17,17 @@ die() { echo "[kiosk-uninstall] ERROR: $*" >&2; exit 1; }
 
 [ "$(id -u)" -eq 0 ] || die "run as root (sudo)."
 
+# --- Stop + remove Google Photos sync (service/timer/path/bin) -----------
+log "stopping + disabling Google Photos sync..."
+for u in service timer path; do
+    systemctl stop "kiosk-gphotos-sync.$u" 2>/dev/null
+    systemctl disable "kiosk-gphotos-sync.$u" 2>/dev/null
+    rm -f "/etc/systemd/system/kiosk-gphotos-sync.$u"
+done
+rm -f "$KIOSK_HOME/bin/kiosk-gphotos-sync.sh"
+systemctl daemon-reload
+log "Google Photos sync removed."
+
 # --- Stop + remove supervisor -------------------------------------------
 log "stopping + disabling supervisor..."
 systemctl stop ha-photo-kiosk.service 2>/dev/null

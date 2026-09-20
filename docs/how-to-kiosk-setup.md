@@ -62,7 +62,7 @@ http://192.168.1.50:8080/config/
 
 Set:
 - **Home Assistant URL** — your HA instance, e.g. `http://192.168.20.12:8123`.
-- **Photo source** — `Local directory` (uploaded, the default) or `Google Photos`.
+- **Photo source** — `Local directory` (uploaded, the default) or `HTTP catalog/feed`. For Google Photos, use the **Google Photos sync** section below instead (syncs into the local folder).
 - **Photo directory** — where photos live inside the engine (default `/photos`).
 - **Idle timeout** — seconds of no input before switching to the photo frame.
 - **Slide interval** — seconds each photo is shown.
@@ -129,6 +129,10 @@ For how everything works under the hood, see
   the HA URL in the web config and that HA is running.
 - **No photos in the frame** — upload some via the web config, or check the
   photos dir has JPG/PNG/WebP files.
+- **Google Photos sync not running** — enable it in the web config (**Google
+  Photos sync** → **Enabled**), confirm the rclone remote exists (`sudo su -
+  kiosk && rclone config`), then hit **Sync now** and check
+  `systemctl status kiosk-gphotos-sync`.
 - **Kiosk not starting** — `journalctl -u ha-photo-kiosk.service` shows the
   supervisor log; it waits for the engine then launches Chromium.
 - **Headless box** — the supervisor defaults to `DISPLAY=:0`. On a box with no

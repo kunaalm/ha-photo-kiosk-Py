@@ -1,0 +1,12 @@
+[Unit]
+Description=HA Photo Kiosk Google Photos sync (rclone)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+User=kiosk
+Group=kiosk
+ExecStart=/home/kiosk/bin/kiosk-gphotos-sync.sh run
+Environment=CONFIG_DIR=/home/kiosk/config
+Environment=PHOTO_DIR=/home/kiosk/photos

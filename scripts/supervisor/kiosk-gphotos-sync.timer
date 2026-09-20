@@ -1,0 +1,10 @@
+[Unit]
+Description=HA Photo Kiosk Google Photos sync timer
+
+[Timer]
+# Run on a schedule; the script checks its config to decide whether to act.
+OnCalendar=hourly
+Persistent=true
+
+[Install]
+WantedBy=timers.target
