@@ -3,6 +3,9 @@
 A complete design, implementation, and testing walkthrough of **ha-photo-kiosk**
 — Home Assistant dashboard + digital photo frame on one display.
 
+> For the high-level design (mental model, components, key decisions), see
+> [DESIGN.md](DESIGN.md). This document is the deep dive.
+
 ---
 
 ## 1. The problem & the mental model

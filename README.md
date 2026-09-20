@@ -122,7 +122,9 @@ sudo REMOVE_DATA=1 bash scripts/uninstall.sh   # also delete photos + config
 - **No browser restarts** — the kiosk loads one URL once; the engine
   multiplexes dashboard (proxied) and photos. This is why it's instant.
 
-Full details: [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md),
+The high-level design (the mental model, components, and the decisions behind
+them): [docs/DESIGN.md](docs/DESIGN.md). Full implementation + testing
+walkthrough: [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md),
 [docs/TESTING.md](docs/TESTING.md).
 
 ## Options at install time
