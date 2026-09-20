@@ -287,9 +287,11 @@ install_supervisor() {
     chown "$KIOSK_USER":"$KIOSK_USER" "$SUPERVISOR_BIN" "$KIOSK_HOME/bin"
     # The systemd unit MUST live in /etc/systemd/system, but it runs the
     # supervisor from the kiosk user's home as that user.
+    # The unit's ExecStart (xinit + openbox-session on vt7) is preserved as-is;
+    # only the kiosk user/group are substituted. Openbox's autostart launches
+    # the supervisor, which opens Chromium.
     sed -e "s|^User=.*|User=$KIOSK_USER|" \
         -e "s|^Group=.*|Group=$KIOSK_USER|" \
-        -e "s|ExecStart=.*|ExecStart=$SUPERVISOR_BIN|" \
         "$INSTALL_DIR/ha-photo-kiosk.service" > /etc/systemd/system/ha-photo-kiosk.service
     systemctl daemon-reload
     systemctl enable ha-photo-kiosk.service >/dev/null 2>&1
