@@ -1,29 +1,43 @@
 #!/bin/bash
 # HA Photo Kiosk — installer.
 #
-# Turns a Debian-based box into a two-state kiosk in one command.
+# Turns a Debian-based box into a two-state kiosk in one command:
+#   * creates a local 'kiosk' user
+#   * puts EVERY kiosk thing under that user's home (~kiosk)
+#   * installs a systemd unit that boots Chromium at the kiosk page
+#
+# Pipeable straight from GitHub — no clone needed:
+#
+#     curl -fsSL https://raw.githubusercontent.com/kunaalm/ha-photo-kiosk-Py/main/install.sh | sudo bash
+#
+# (Inspect it first if you like: curl that URL, read the file, then run it.)
 #
 # Default install: pulls the published engine container from GHCR (no local
-# build). The engine (smarts) runs in the container; the supervisor (browser +
-# display) runs on the host.
+# build, no clone). The engine (smarts) runs in the container; the supervisor
+# (browser + display) runs on the host.
 #
-# Alternative: `--from-source` installs the engine as a Python venv on the host
-# instead of a container — useful for hacking on the code or boxes without
-# Docker.
+# Alternative: `--from-source` clones the repo and installs the engine as a
+# Python venv — for hacking on the code or boxes without Docker.
 #
-# Either way, after install you are directed to the WEB CONFIG SERVICE
-# (http://localhost:PORT/config/) to complete the setup — set your HA URL,
-# photo source, and timings there, not via this script.
-set -u
+# Either way, after install you are directed to the WEB CONFIG SERVICE to
+# complete setup — set your HA URL, photo source, and timings there, not via
+# this script.
+set -eu
 
 # --- Config (env-overridable) -------------------------------------------
 KIOSK_USER="${KIOSK_USER:-kiosk}"
+KIOSK_HOME="$(getent passwd "$KIOSK_USER" | cut -d: -f6)"
+[ -n "$KIOSK_HOME" ] || KIOSK_HOME="/home/$KIOSK_USER"
 ENGINE_PORT="${ENGINE_PORT:-8080}"
-PHOTO_HOST_DIR="${PHOTO_HOST_DIR:-/opt/kiosk/photos}"
-CONFIG_HOST_DIR="${CONFIG_HOST_DIR:-/opt/kiosk/config}"
-ENGINE_SRC_DIR="${ENGINE_SRC_DIR:-/opt/kiosk/engine}"
+PHOTO_HOST_DIR="${PHOTO_HOST_DIR:-$KIOSK_HOME/photos}"
+CONFIG_HOST_DIR="${CONFIG_HOST_DIR:-$KIOSK_HOME/config}"
+ENGINE_SRC_DIR="${ENGINE_SRC_DIR:-$KIOSK_HOME/engine}"
+INSTALL_DIR="${INSTALL_DIR:-$KIOSK_HOME/install-files}"
+SUPERVISOR_BIN="${SUPERVISOR_BIN:-$KIOSK_HOME/bin/kiosk-supervisor.sh}"
 IMAGE="${IMAGE:-ghcr.io/kunaalm/ha-photo-kiosk-py:latest}"
-REPO_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+# Where the installer pulls companion files from (a tag, not main, for pinning).
+REPO_RAW="${REPO_RAW:-https://raw.githubusercontent.com/kunaalm/ha-photo-kiosk-Py/main}"
+REPO_GIT="https://github.com/kunaalm/ha-photo-kiosk-Py.git"
 MODE="container"   # container | source
 
 log() { echo "[kiosk-install] $*"; }
@@ -41,6 +55,24 @@ parse_args() {
     done
 }
 
+# --- Helpers ------------------------------------------------------------
+have_curl() { command -v curl >/dev/null 2>&1; }
+have_wget() { command -v wget >/dev/null 2>&1; }
+
+# Fetch a companion file from the repo into the install dir.
+fetch() {
+    # fetch <repo-relative-path> -> $INSTALL_DIR/<basename>
+    local rel="$1"
+    mkdir -p "$INSTALL_DIR"
+    if have_curl; then
+        curl -fsSL "$REPO_RAW/$rel" -o "$INSTALL_DIR/$(basename "$rel")" || die "could not download $rel."
+    elif have_wget; then
+        wget -q "$REPO_RAW/$rel" -O "$INSTALL_DIR/$(basename "$rel")" || die "could not download $rel."
+    else
+        die "need curl or wget to download companion files."
+    fi
+}
+
 # --- 1. Prerequisites ----------------------------------------------------
 check_prereqs() {
     [ "$(id -u)" -eq 0 ] || die "run as root (sudo)."
@@ -50,20 +82,38 @@ check_prereqs() {
         docker info >/dev/null 2>&1 || die "docker daemon not running (or no permission)."
         command -v docker compose >/dev/null 2>&1 || command -v docker-compose >/dev/null 2>&1 \
             || die "docker compose plugin not found."
+        have_curl || have_wget || die "need curl or wget to fetch companion files."
     else
+        command -v git >/dev/null 2>&1 || die "git not found for --from-source mode."
         command -v python3 >/dev/null 2>&1 || die "python3 not found for --from-source mode."
     fi
     log "prerequisites OK (root, systemd, mode=$MODE)."
 }
 
-# --- 2. Engine: container (default) or venv (--from-source) -------------
+# --- 2. Kiosk user --------------------------------------------------------
+install_user() {
+    if id "$KIOSK_USER" >/dev/null 2>&1; then
+        log "kiosk user '$KIOSK_USER' already exists (home $KIOSK_HOME)."
+    else
+        useradd -m -s /bin/bash "$KIOSK_USER" || die "could not create user '$KIOSK_USER'."
+        # Re-derive home in case the user existed with a non-default HOME.
+        KIOSK_HOME="$(getent passwd "$KIOSK_USER" | cut -d: -f6)"
+        log "created kiosk user '$KIOSK_USER' (home $KIOSK_HOME)."
+    fi
+    # Everything kiosk lives under the user's home; the user owns it all.
+    mkdir -p "$KIOSK_HOME/bin" "$PHOTO_HOST_DIR" "$CONFIG_HOST_DIR" "$INSTALL_DIR"
+    chown -R "$KIOSK_USER":"$KIOSK_USER" "$KIOSK_HOME"
+}
+
+# --- 3. Engine: container (default) or venv (--from-source) -------------
 install_engine() {
     if [ "$MODE" = "container" ]; then
         log "pulling engine image ($IMAGE)..."
         docker pull "$IMAGE" >/dev/null 2>&1 || die "could not pull $IMAGE."
-        # Write a compose override pinning runtime config + volumes so the web
-        # config service persists across restarts.
-        cat > "$REPO_DIR/docker-compose.override.yml" <<EOF
+        # Pull the compose file from the repo at install time (single source of
+        # truth) and write an override pinning runtime config.
+        fetch "docker-compose.yml"
+        cat > "$INSTALL_DIR/docker-compose.override.yml" <<EOF
 services:
   kiosk-engine:
     image: ${IMAGE}
@@ -80,20 +130,13 @@ services:
       - "${PHOTO_HOST_DIR}:/photos"
 EOF
         mkdir -p "$PHOTO_HOST_DIR" "$CONFIG_HOST_DIR"
-        docker compose -f "$REPO_DIR/docker-compose.yml" -f "$REPO_DIR/docker-compose.override.yml" up -d \
+        docker compose -f "$INSTALL_DIR/docker-compose.yml" -f "$INSTALL_DIR/docker-compose.override.yml" up -d \
             || die "engine container failed to start."
         log "engine container up."
     else
-        log "installing engine as Python venv at $ENGINE_SRC_DIR..."
-        mkdir -p "$ENGINE_SRC_DIR" "$PHOTO_HOST_DIR" "$CONFIG_HOST_DIR"
-        # rsync the repo into place (keep .git so it's updatable).
-        command -v rsync >/dev/null 2>&1 && {
-            rsync -a --exclude='.venv' --exclude='__pycache__' --exclude='.git' \
-                "$REPO_DIR/" "$ENGINE_SRC_DIR/"
-        } || {
-            cp -r "$REPO_DIR"/. "$ENGINE_SRC_DIR/" 2>/dev/null
-            rm -rf "$ENGINE_SRC_DIR/.venv" "$ENGINE_SRC_DIR/__pycache__"
-        }
+        log "installing engine as Python venv at $ENGINE_SRC_DIR (cloning repo)..."
+        git clone --depth 1 "$REPO_GIT" "$ENGINE_SRC_DIR" \
+            || die "could not clone repository."
         python3 -m venv "$ENGINE_SRC_DIR/.venv" || die "could not create venv."
         "$ENGINE_SRC_DIR/.venv/bin/pip" install --quiet -r "$ENGINE_SRC_DIR/requirements.txt" \
             || die "could not install Python deps."
@@ -101,7 +144,7 @@ EOF
     fi
 }
 
-# --- 3. Engine service (source mode runs app.py under systemd) ----------
+# --- 4. Engine service (source mode runs app.py under systemd) ----------
 install_engine_service() {
     [ "$MODE" = "source" ] || return 0
     cat > /etc/systemd/system/kiosk-engine.service <<EOF
@@ -112,6 +155,8 @@ Wants=network-online.target
 
 [Service]
 Type=simple
+User=$KIOSK_USER
+Group=$KIOSK_USER
 ExecStart=$ENGINE_SRC_DIR/.venv/bin/python $ENGINE_SRC_DIR/app.py
 Environment=PORT=$ENGINE_PORT
 Environment=HA_URL=http://localhost:8123
@@ -128,24 +173,20 @@ EOF
     log "engine systemd service installed + enabled."
 }
 
-# --- 4. Kiosk user --------------------------------------------------------
-install_user() {
-    if id "$KIOSK_USER" >/dev/null 2>&1; then
-        log "kiosk user '$KIOSK_USER' already exists."
-    else
-        useradd -m -s /bin/bash "$KIOSK_USER" || die "could not create user '$KIOSK_USER'."
-        log "created kiosk user '$KIOSK_USER'."
-    fi
-}
-
 # --- 5. Supervisor + systemd --------------------------------------------
 install_supervisor() {
     log "installing supervisor script + systemd unit..."
-    install -m 0755 "$REPO_DIR/supervisor/kiosk-supervisor.sh" /usr/local/bin/kiosk-supervisor.sh
+    fetch "supervisor/kiosk-supervisor.sh"
+    fetch "supervisor/ha-photo-kiosk.service"
+    install -m 0755 "$INSTALL_DIR/kiosk-supervisor.sh" "$SUPERVISOR_BIN"
+    # The kiosk user owns its whole home, including the supervisor it runs.
+    chown "$KIOSK_USER":"$KIOSK_USER" "$SUPERVISOR_BIN" "$KIOSK_HOME/bin"
+    # The systemd unit MUST live in /etc/systemd/system, but it runs the
+    # supervisor from the kiosk user's home as that user.
     sed -e "s|^User=.*|User=$KIOSK_USER|" \
         -e "s|^Group=.*|Group=$KIOSK_USER|" \
-        -e "s|ExecStart=.*|ExecStart=/usr/local/bin/kiosk-supervisor.sh|" \
-        "$REPO_DIR/supervisor/ha-photo-kiosk.service" > /etc/systemd/system/ha-photo-kiosk.service
+        -e "s|ExecStart=.*|ExecStart=$SUPERVISOR_BIN|" \
+        "$INSTALL_DIR/ha-photo-kiosk.service" > /etc/systemd/system/ha-photo-kiosk.service
     systemctl daemon-reload
     systemctl enable ha-photo-kiosk.service >/dev/null 2>&1
     log "supervisor installed + enabled."
@@ -153,9 +194,8 @@ install_supervisor() {
 
 # --- 6. Photos dir -------------------------------------------------------
 setup_photos() {
-    mkdir -p "$PHOTO_HOST_DIR"
     chown -R "$KIOSK_USER":"$KIOSK_USER" "$PHOTO_HOST_DIR" "$CONFIG_HOST_DIR" 2>/dev/null || true
-    log "photos dir ready at $PHOTO_HOST_DIR (drop JPG/PNG/WebP files here)."
+    log "photos dir ready at $PHOTO_HOST_DIR (or just upload via the web config)."
 }
 
 # --- Main ----------------------------------------------------------------
@@ -202,7 +242,7 @@ main() {
     log "      sudo docker restart kiosk-engine       # container install"
     log ""
     log "  To start the kiosk now:   systemctl start ha-photo-kiosk.service"
-    log "  (It also starts automatically on boot — that's the point.)"
+    log "  (It also starts automatically on boot.)"
     log ""
 }
 

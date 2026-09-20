@@ -32,10 +32,18 @@ EDITABLE_FIELDS = {
 
 
 class ConfigStore:
+    """Persists a JSON config file (web-editable) on top of env defaults.
+
+    ``save`` merges with the existing file so a partial POST (e.g. only
+    idle_timeout) doesn't clobber fields that weren't posted (like ha_url).
+    Only non-secret fields (EDITABLE_FIELDS) are ever read/written.
+    """
+
     def __init__(self, path: str = "/config/kiosk.json"):
         self.path = Path(path)
 
     def load(self) -> Dict[str, Any]:
+        """Read the config file as a dict ({} if missing or corrupt)."""
         if not self.path.is_file():
             return {}
         try:
@@ -44,6 +52,11 @@ class ConfigStore:
             return {}
 
     def save(self, data: Dict[str, Any]) -> None:
+        """Merge ``data`` (whitelisted fields only) into the config file.
+
+        The merge (not replace) is what makes the web UI safe to use with
+        partial saves.
+        """
         self.path.parent.mkdir(parents=True, exist_ok=True)
         # Merge with the existing file so a partial POST (e.g. only
         # idle_timeout) doesn't clobber unposted fields like ha_url. Only

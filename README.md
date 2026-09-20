@@ -32,14 +32,15 @@ room displays. Set it and forget it.
 
 ### 1. Install (one command, on the kiosk box)
 
-Download and run the installer. It pulls the pre-built engine container, sets
-up the display supervisor, and creates the kiosk user — no compile step.
+Pipe the installer straight from GitHub — no clone, no compile:
 
 ```bash
-git clone https://github.com/kunaalm/ha-photo-kiosk
-cd ha-photo-kiosk
-sudo bash install.sh
+curl -fsSL https://raw.githubusercontent.com/kunaalm/ha-photo-kiosk-Py/main/install.sh | sudo bash
 ```
+
+(Prefer to read first? `curl -fsSL <that URL>` shows you the whole script before
+you run it.) It pulls the pre-built engine container, sets up the display
+supervisor, and creates the kiosk user.
 
 Needs: a Debian-based box (Ubuntu / Debian / Raspberry Pi OS) with **Docker**,
 and a reachable Home Assistant instance.
@@ -126,9 +127,9 @@ Full details: [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md),
 
 ## Options at install time
 
-- `sudo bash install.sh --from-source` — install the engine as a Python venv
-  on the host instead of a container (for hacking on the code, or boxes
-  without Docker).
+- `| sudo bash` with the extra flag `--from-source` at the end — installs the
+  engine as a Python venv on the host instead of a container (clones the repo;
+  for hacking on the code, or boxes without Docker).
 - `sudo HA_URL="http://..." bash install.sh` — pre-seed the Home Assistant
   URL at install time (otherwise set it in the web config).
 

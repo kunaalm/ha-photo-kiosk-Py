@@ -17,12 +17,14 @@ from typing import Optional
 
 
 class State(Enum):
+    """The two kiosk display states (digital-signage convention)."""
     ACTIVE = "active"
     IDLE = "idle"
 
 
 @dataclass
 class Transition:
+    """A state change returned by tick(): what changed, why, and for how long."""
     current: State
     next: State
     reason: str  # "input" | "idle-timeout"
@@ -43,6 +45,7 @@ class KioskStateMachine:
         self.idle_since_ts: Optional[float] = None
 
     def reset(self, now: float) -> None:
+        """Return to ACTIVE and start the idle clock at ``now`` (e.g. on boot)."""
         self.state = State.ACTIVE
         self.last_input_ts = now
         self.idle_since_ts = now  # idle clock starts at reset (last input)
@@ -76,4 +79,5 @@ class KioskStateMachine:
 
     @property
     def is_idle(self) -> bool:
+        """True when the kiosk is currently in the photo-frame (idle) state."""
         return self.state is State.IDLE

@@ -26,6 +26,14 @@ def _env_int(name: str, default: int) -> int:
 
 @dataclass
 class Config:
+    """Runtime configuration.
+
+    All fields have built-in defaults so the engine starts with zero config;
+    every value is overridable by an environment variable (see ``from_env``),
+    and a JSON file can override env via ``ConfigStore``. Secrets (Google
+    client id/secret, refresh token) are NEVER given file defaults — they are
+    env-only, because the config store is deliberately whitelisted.
+    """
     # --- Home Assistant ---
     ha_url: str = "http://localhost:8123"
     strip_x_frame_options: bool = True     # required for cross-origin iframe
@@ -63,6 +71,7 @@ class Config:
 
     @classmethod
     def from_env(cls) -> "Config":
+        """Build a Config from environment variables (defaults when unset)."""
         return cls(
             ha_url=os.getenv("HA_URL", "http://localhost:8123").rstrip("/"),
             strip_x_frame_options=_env_bool("STRIP_X_FRAME_OPTIONS", True),

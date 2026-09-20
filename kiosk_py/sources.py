@@ -26,6 +26,12 @@ class Photo:
 
 
 class Source(Protocol):
+    """The pluggable photo-source interface.
+
+    A source returns an ordered list of ``Photo`` objects (URL + optional
+    caption) that the frame page cycles through. Everything the engine needs
+    to know about "where photos come from" is this one method.
+    """
     name: str
 
     def list(self) -> List[Photo]:
@@ -241,14 +247,11 @@ class AmbientSource:
 
     def __init__(self, client_id: str = "", client_secret: str = "",
                  refresh_token: str = "", device_id: str = "",
-                 timeout: float = 10.0, http_transport=None):
+                 timeout: float = 10.0):
         self.auth = AmbientAuth(client_id, client_secret, timeout)
         self.auth._refresh_token = refresh_token or None
         self.device_id = device_id
         self.timeout = timeout
-        self._transport = http_transport or default_http_transport()
-        # Current media item queue (used to walk CDN URLs when rendering).
-        self._items: List[dict] = []
 
     # ---- device management ---------------------------------------------
     def is_configured(self) -> bool:
@@ -326,7 +329,6 @@ class AmbientSource:
             page_token = page.get("nextPageToken")
             if not page_token:
                 break
-        self._items = [{"url": p.url, "id": p.caption} for p in photos]
         return photos
 
     def fetch_image_bytes(self, encoded_url: str, timeout: Optional[float] = None) -> Optional[bytes]:
@@ -341,15 +343,6 @@ class AmbientSource:
                 return resp.read()
         except Exception:
             return None
-
-
-class _DefaultHttpTransport:
-    """Placeholder transport so the base class can construct without it."""
-    def __init__(self): ...
-
-
-def default_http_transport():
-    return _DefaultHttpTransport()
 
 
 def get_source(config) -> Source:
