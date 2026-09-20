@@ -16,9 +16,11 @@ connected devices" (i.e. exactly a photo frame).
 > **live Ambient discovery document**
 > (`https://photosambient.googleapis.com/$discovery/rest`), but it has **not
 > been live-tested against a real Google account** — that needs your OAuth2
-> credentials to exercise end-to-end. The flow below is the standard one per
-> Google's current docs; if you hit a snag it's almost always a consent-screen
-> or scope issue (Section 6).
+> credentials to exercise end-to-end. A live-test harness is included:
+> `scripts/test-google-live.py` walks the full flow (device-code auth → create
+> device → pick sources → list photos → fetch one) against a real account.
+> The flow below is the standard one per Google's current docs; if you hit a
+> snag it's almost always a consent-screen or scope issue (Section 6).
 
 ## What you need
 
