@@ -41,6 +41,7 @@ IMAGE="${IMAGE:-ghcr.io/kunaalm/ha-photo-kiosk-py:latest}"
 REPO_RAW="${REPO_RAW:-https://raw.githubusercontent.com/kunaalm/ha-photo-kiosk-Py/main}"
 REPO_GIT="https://github.com/kunaalm/ha-photo-kiosk-Py.git"
 MODE="container"   # container | source
+KIOSK_DISPLAY="${KIOSK_DISPLAY:-gui}"   # gui (physical, default) | headless
 
 log() { echo "[kiosk-install] $*"; }
 die() { echo "[kiosk-install] ERROR: $*" >&2; exit 1; }
