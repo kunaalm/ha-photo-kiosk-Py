@@ -56,9 +56,9 @@ Two helper functions:
 - `_env_bool(name, default)` — parses `1/true/yes/on` as True.
 - `_env_int(name, default)` — parses an int, falls back on empty.
 
-**Security rule:** Google secrets (`google_client_id/secret/refresh_token`)
-have **no file default** and are **not** in `EDITABLE_FIELDS` — they are
-env-only, so the web config service can never read or write them.
+**Security rule:** secrets are never given file defaults and are not in
+`EDITABLE_FIELDS` — the web config service can only ever read/write the
+whitelisted non-secret fields.
 
 ### 3b. `ConfigStore` (config_store.py)
 
@@ -102,7 +102,6 @@ the HA catch-all):
 | GET | `/frame/`, `/frame` | `serve_frame` | The kiosk page (HA iframe + slideshow) |
 | GET | `/photos.json` | `serve_photos` | Photo list for the frame JS |
 | GET | `/images/{path}` | `serve_local_image` | Serve a local photo file |
-| GET | `/gimg/{path}` | `serve_google_image` | Proxy a Google Ambient image |
 | GET | `/config/`, `/config` | `serve_config_page` | The web config UI |
 | GET | `/api/config` | `get_config` | Read effective config |
 | POST | `/api/config` | `post_config` | Save config (validated) |
@@ -159,10 +158,6 @@ Reads `frame.html`, substitutes the three timing placeholders
 - `serve_photos()` — `{"photos": [{url, caption}...]}` from `source.list()`.
 - `serve_local_image()` — serves a file under `photo_dir`, **path-traversal
   safe** (`resolve()` + `is_relative_to` check).
-- `serve_google_image()` — for the Ambient source: the frame's `<img>` can't
-  attach the OAuth bearer token, so the engine fetches the CDN bytes
-  authenticated (`source.fetch_image_bytes`) and streams them back. 404 if
-  the source isn't google-photos; 502 if the fetch fails.
 
 ### 4g. Config API
 
@@ -191,7 +186,7 @@ auth against a kiosk-owned file (`/config/auth.json`).
 
 `_require_auth()` in the server returns 401 (with `WWW-Authenticate`) on any
 config/upload route if the credentials don't match. The frame page and photo
-serving (`/frame/`, `/photos.json`, `/images`, `/gimg`) are **not** behind
+serving (`/frame/`, `/photos.json`, `/images`) are **not** behind
 auth — the kiosk itself must render them without a login.
 
 ### 4i. Photo upload / management
@@ -253,43 +248,10 @@ shape: `{"photos": [{"url": ..., "caption": ...}]}`. This is how a
 self-hosted album (Immich/PhotoPrism proxy) plugs in without a vendor OAuth
 dance.
 
-### 6d. `AmbientAuth` + `AmbientSource` (Google Photos)
-
-The Ambient API is the official successor to the deprecated Library API
-(`photoslibrary.readonly` was removed after Mar 31 2025). Two things make it
-different:
-
-1. **Auth** is OAuth 2.0 for *TVs and Limited-Input Device* apps (device-code
-   flow): the user sees a `user_code` + `verification_url`, approves from a
-   phone/laptop, the app polls the token endpoint. Scope:
-   `photosambient.mediaitems`.
-2. **Rendering** needs the token in the request **header** — a bare `<img>`
-   can't attach it, so the engine proxies each image.
-
-`AmbientAuth`:
-- `start_device_code()` — POST `/device/code` → `{user_code,
-  verification_url, device_code, ...}`.
-- `poll_for_token()` — poll `/token` with the device_code grant until the
-  user authorizes; captures a refresh token on first success.
-- `refresh_access_token()` — non-interactive refresh with the refresh token.
-- `access_token()` — return cached token if unexpired, else refresh.
-
-`AmbientSource`:
-- `is_configured()` — client_id + refresh_token + device_id all present.
-- `create_device()` — POST `/v1/devices` `{displayName}` → AmbientDevice.
-- `get_device()` / `device_ready()` — poll until `mediaSourcesSet` is true
-  (the user picked which albums to share, in the Photos app).
-- `_list_page()` — GET `/v1/mediaItems?deviceId=..&pageSize=..&pageToken=..`.
-- `list()` — paginate media items; each `Photo.url` is `/gimg/<url-encoded
-  CDN baseUrl + =w1920-h1200>` (the engine proxy route).
-- `fetch_image_bytes()` — fetch one CDN URL with the bearer token attached
-  (used by `serve_google_image`).
-
 ### 6e. Factory — `get_source(config)`
 
 Maps `config.photo_source` → a `Source` instance: `"http"` → `HttpSource`,
-`"google-photos"` → `AmbientSource`, default → `LocalSource`. This is the
-single place new sources register.
+default → `LocalSource`. This is the single place new sources register.
 
 ---
 
@@ -435,14 +397,13 @@ frame.html startClock() ──► setLayer("idle") ──► fade HA out, photos
 frame.html advanceSlide() ──► GET /photos.json ──► source.list()
    │                                              │
    │                                              ├─ LocalSource: walk photo_dir
-   │                                              ├─ HttpSource: fetch catalog
-   │                                              └─ AmbientSource: mediaItems.list
+   │                                              └─ HttpSource: fetch catalog
    ▼
-<img src="/images/x.jpg">  or  <img src="/gimg/<encoded>">
-   │                              │
-   ▼                              ▼
-serve_local_image()        serve_google_image() ──► fetch_image_bytes() (token)
-   │                              │
+<img src="/images/x.jpg">
+   │
+   ▼
+serve_local_image()
+   │
    └──────────────► bytes back to the frame
 ```
 

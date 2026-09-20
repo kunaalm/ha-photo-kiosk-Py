@@ -121,7 +121,7 @@ sudo systemctl start ha-photo-kiosk.service
 
 For how everything works under the hood, see
 [ARCHITECTURE.md](ARCHITECTURE.md) (design + implementation + testing) and
-[`google-photos.md`](google-photos.md) for the Google Photos source.
+[`google-photos.md`](google-photos.md) for showing Google Photos by syncing to the photo folder.
 
 ## Troubleshooting
 

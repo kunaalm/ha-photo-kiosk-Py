@@ -77,11 +77,11 @@ the frame.
 
 ![Upload photos from the config page](docs/images/vm-test/howto-config-photos.png)
 
-Alternative sources:
-- **Google Photos** — point the config at your own Google Photos albums (see
-  [docs/google-photos.md](docs/google-photos.md)).
-- **Local directory** — if the kiosk box itself has images somewhere you can
-  reach, or you're comfortable mounting a folder.
+To show your own **Google Photos**, sync them into the kiosk's photo folder
+with a tool like rclone — the kiosk reads local files only (see
+[docs/google-photos.md](docs/google-photos.md)). Otherwise the **Local
+directory** source is the default (upload via the web config, or mount a
+folder).
 
 ### 4. Point Chromium at it
 
@@ -152,6 +152,6 @@ HA_URL="http://192.168.20.12:8123" PHOTO_DIR="./photos" python apps/app.py
 ## Status
 
 Working end-to-end: engine, supervisor, installer, web config + photo upload,
-a real Chrome-based test harness, and Google Photos via the Ambient API.
+and a real Chrome-based test harness.
 Additional photo sources remain easy to add behind the pluggable
 `Source` interface.

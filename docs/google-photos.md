@@ -1,132 +1,86 @@
-# Google Photos integration (Ambient API)
+# Showing Google Photos
 
-Point the photo frame at your **own Google Photos library**. This uses the
-official **Google Photos Ambient API** — the successor to the Library API,
-built specifically for "view photos from your Google Photos library on
-connected devices" (i.e. exactly a photo frame).
+The kiosk shows photos from a local directory (`~/kiosk/photos` on the host,
+mounted at `/photos` in the engine). To show your **Google Photos**, sync them
+into that directory with an external tool — the kiosk itself touches no cloud
+API.
 
-> **Why Ambient and not the Libraries API?** The old `photo-library` scope
-> (`photoslibrary.readonly`) was **removed after March 31, 2025** — apps can
-> only keep accessing app-created content. Google now directs personal-photo
-> use to the **Ambient API** and the **Picker API**. Ambient is the right fit
-> here: it's for devices (like a kiosk) that *display* a user's photos, and its
-> device-code OAuth works great when there's no browser on the device.
+This is the deliberate design for a homelab kiosk. Google's Ambient and Picker
+APIs — the ones built for shipping consumer/enterprise photo-display *products*
+— require a Google Cloud project, an OAuth client, a consent flow, and device
+management in Google's console. None of that belongs in a home photo frame.
+The kiosk just reads files; a sync job keeps them fresh.
 
-> **Honest status:** the code is implemented and unit-tested against the
-> **live Ambient discovery document**
-> (`https://photosambient.googleapis.com/$discovery/rest`), but it has **not
-> been live-tested against a real Google account** — that needs your OAuth2
-> credentials to exercise end-to-end. A live-test harness is included:
-> `scripts/test-google-live.py` walks the full flow (device-code auth → create
-> device → pick sources → list photos → fetch one) against a real account.
-> The flow below is the standard one per Google's current docs; if you hit a
-> snag it's almost always a consent-screen or scope issue (Section 6).
-
-## What you need
-
-1. A **Google Cloud project**.
-2. An **OAuth2 client ID + secret** — application type **"TVs and Limited
-   Input devices"** (this is what enables the device-code flow).
-3. An **Ambient API device** created in the engine once, then the user's
-   choice of which sources (albums) to share, made in the Google Photos app.
-
-## 1. Create the Google Cloud client
-
-1. Go to [console.cloud.google.com](https://console.cloud.google.com) and
-   create a project (or open an existing one).
-2. Open the **Google Photos Library API** for your project — in the API
-   console, enable the Photos Library API and its **Ambient API**.
-3. **OAuth consent screen** — configure it (user type "External", add your
-   Google account as a test user).
-4. **Credentials → Create Credentials → OAuth client ID**:
-   - **Application type: TVs and Limited Input devices** ⚠️ — use this exact
-     type. It enables the device-code (user_code + verification_url) flow
-     that a kiosk needs (no callback redirect URI involved).
-   - Note the **Client ID** and **Client secret**.
-
-## 2. Scope
-
-The Ambient API uses a single, dedicated scope:
+## How it works
 
 ```
-https://www.googleapis.com/auth/photosambient.mediaitems
+Google Photos  ──sync job──▶  ~/kiosk/photos  ──LocalSource──▶  the frame
+   (cloud)                     (local files)                      (kiosk)
 ```
 
-The engine requests exactly this scope (with `offline` access so it receives
-a refresh token). No `photoslibrary.*` scopes — those are the removed ones.
+The sync job downloads your photos into `~/kiosk/photos` on a schedule (e.g.
+daily, or on a timer). The kiosk's `LocalSource` picks them up — it walks the
+directory, so new files appear automatically.
 
-## 3. Authorize + create a device
+## Option A: rclone (recommended)
 
-Because this is a **TV / limited-input-device** flow, authorization is
-device-code: the engine (or you) starts the flow, Google returns a
-`user_code` and a `verification_url`, you approve from your phone/laptop, and
-the engine polls until approved. This is the *one-time* setup step.
+[rclone](https://rclone.org) syncs remote storage to a local folder and
+supports Google Photos.
 
-At runtime the ambient source does the following (see
-`kiosk_py/sources.py`, `AmbientSource`):
+```bash
+# install rclone
+sudo apt install rclone
 
-1. **`POST /v1/devices`** with `{ "displayName": "Photo Frame" }` → creates a
-   device in your Photos account, returns its `id`.
-2. You pick which **sources** to share — in the **Google Photos app →
-   Device → the Photo Frame device** you just created, choose albums or
-   highlights.
-3. The engine polls **`GET /v1/devices/{id}`** until `mediaSourcesSet` is
-   `true`.
-4. It lists photos with **`GET /v1/mediaItems?deviceId={id}`** (paginated via
-   `pageToken`/`pageSize`, default 50, max 100).
+# one-time config (choose Google Photos as the remote)
+rclone config
 
-Each returned item has `id`, `name`, `createTime`, and a `mediaFile` with
-`baseUrl` (+ `thumbnailBaseUrl`, `backgroundBaseUrl`, `mimeType`).
+# sync your photos into the kiosk's photo dir
+rclone sync gphotos:media/by-month ~/.rclone-cache/photos \
+  --transfers 4 --fast-list
 
-## 4. Configure the engine
-
-Point the engine at Google Photos and give it the credentials as environment
-variables (in `docker-compose.override.yml`, a `.env`, or the systemd unit
-for a `--from-source` install):
-
-```
-PHOTO_SOURCE=google-photos
-GOOGLE_CLIENT_ID=...
-GOOGLE_CLIENT_SECRET=...
-GOOGLE_REFRESH_TOKEN=...     # captured after the first device-code approval
-GOOGLE_DEVICE_ID=...         # the device id from step 3
+# then copy into the kiosk dir (or mount directly)
+cp -r ~/.rclone-cache/photos/* /home/kiosk/photos/
 ```
 
-Then set `photo_source` to **Google Photos** in the web config (`/config/`)
-and restart the engine. If `GOOGLE_DEVICE_ID` is blank, the engine logs a
-clear message telling you to run the one-time device setup (Section 3) first.
+> **Note:** Google Photos via rclone can be rate-limited. The important thing
+> is the *pattern* — sync to a folder, let the kiosk serve files. Use whatever
+> sync tool you prefer.
 
-## 5. Rendering: why the engine proxies the images
+## Option B: Takeout downloader
 
-Ambient `mediaFile.baseUrl` values live on Google's CDN (`lh3...`) but a
-request to them **must include `Authorization: Bearer <access token>` in the
-header** — a bare `<img src="lh3...">` in the frame page cannot attach that
-header.
+Google Takeout exports your photos as a zip. A small script can download the
+latest export and unpack it into `~/kiosk/photos`. This is the most
+"hands-off" and needs no API credentials.
 
-So instead of loading Google's CDN directly, the engine:
+## Option C: skip it — use local-only photos
 
-1. Builds a sized URL from the base URL: `baseUrl =w<max-width>-h<max-height>`
-   (fit within bounds; Google also supports `=d` for full metadata and `=c`
-   crop — and offers `backgroundBaseUrl`, Google's own blurred fill).
-2. Points the frame at an internal route — `/gimg/<url-encoded URL>`.
-3. The engine fetches the bytes with the token attached and **streams them
-   back** to the frame, so Google photos render like local ones (same origin,
-   no CORS).
+If you don't need cloud photos, just upload images from the web config page
+(`/config/`, **Photos** section) or drop files into `~/kiosk/photos`. The
+kiosk works perfectly with zero Google involvement.
 
-## 6. Troubleshooting
+## Scheduling the sync
 
-- **No photos after authorizing** — the user hasn't selected media sources
-  yet: open the Google Photos app → the device name → pick albums. The
-  engine only lists items once `mediaSourcesSet` is true.
-- **`devices.create` fails** — you created the OAuth client as the wrong
-  type. It must be **"TVs and Limited Input devices"**. On the wrong type the
-  device-code endpoint won't work.
-- **Refresh token invalid / expires** — Google's non-production "test user"
-  flow expires refresh tokens after ~7 days unless the app is published.
-  For a personal kiosk, re-run the one-time device flow, or configure the
-  OAuth consent screen so your Google account isn't limited to "test user"
-  (publish the app "In production" with your user as an allowed domain).
-- **Images 502 from /gimg/** — the access token couldn't be refreshed (check
-  the two secrets above), or the network can't reach `lh3.googleusercontent.com`.
-- **"Ambient API" not available in the console** — make sure Photos Library
-  API + Ambient are enabled for the project in the API console.
+Add a systemd timer or cron job (as the `kiosk` user) to run the sync
+periodically:
+
+```bash
+# /etc/systemd/system/gphotos-sync.timer
+[Unit]
+Description=Sync Google Photos
+
+[Timer]
+OnCalendar=daily
+Persistent=true
+
+[Install]
+WantedBy=timers.target
+```
+
+## Why not the Ambient/Picker APIs?
+
+- They're built for shipping **products** (digital picture-frame devices,
+  kiosk vendors) — Google Cloud project, OAuth client typed specifically, a
+  device to create and manage in Google's console, a consent flow.
+- For a homelab, that's a large setup burden for zero benefit over a sync job.
+- rclone/Takeout/sync-to-folder does the same job with no API credentials and
+  no quota limits to hit (Google's APIs cap requests per day).

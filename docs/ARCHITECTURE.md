@@ -97,7 +97,6 @@ mechanical additions. Implemented:
 | Source | What it is | How the frame loads it |
 |---|---|---|
 | `local` | A directory of images | Engine serves them at `/images/*` (same origin) |
-| `google-photos` | Your own Google Photos via the Ambient API (device-code OAuth, read-only) | Engine proxies each image at `/gimg/*` (Ambient CDN URLs need the token in the request header) |
 | `http` | Any URL/feed returning a JSON photo catalog | Direct URLs |
 
 ### 3d. Web config + upload, not filesystem edits
@@ -195,8 +194,8 @@ Chrome's DevTools Protocol).
 
 ## 7. Known limitations (honest)
 
-- **Google Photos is unit-tested but not live-verified** (needs real OAuth
-  credentials) — see `docs/google-photos.md`.
+- **Google Photos** is shown by syncing to the photo folder (no cloud API) —
+  see `docs/google-photos.md`.
 - **VM harness is manual** (not CI) — it needs KVM + a real HA instance.
 - The photo-frame JS layer's rendering is verified via screenshots; the
   background HA session persistence across engine restarts isn't separately

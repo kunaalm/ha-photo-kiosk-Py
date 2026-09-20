@@ -30,9 +30,7 @@ class Config:
 
     All fields have built-in defaults so the engine starts with zero config;
     every value is overridable by an environment variable (see ``from_env``),
-    and a JSON file can override env via ``ConfigStore``. Secrets (Google
-    client id/secret, refresh token) are NEVER given file defaults — they are
-    env-only, because the config store is deliberately whitelisted.
+    and a JSON file can override env via ``ConfigStore``.
     """
     # --- Home Assistant ---
     ha_url: str = "http://localhost:8123"
@@ -43,22 +41,11 @@ class Config:
     port: int = 8080
 
     # --- Photo source ---
-    photo_source: str = "local"            # local | http | google-photos
+    photo_source: str = "local"            # local | http
     photo_dir: str = "/photos"             # source=local
     photo_catalog_url: str = ""            # source=http (URL to a JSON catalog)
     cache_dir: str = "/cache"
     slide_interval_seconds: int = 10
-
-    # --- Google Photos Ambient API (source=google-photos). Secrets are
-    # referenced by env/file, never baked in or logged. Create a "TVs and
-    # Limited Input devices" OAuth client at console.cloud.google.com (see
-    # docs/google-photos.md): device-code flow, scope
-    # photosambient.mediaitems, then create a device and have the user pick
-    # which sources (albums) to share.
-    google_client_id: str = ""
-    google_client_secret: str = ""
-    google_refresh_token: str = ""
-    google_device_id: str = ""
 
     # --- Idle / state machine ---
     idle_timeout_seconds: int = 120        # no input for this long → idle
@@ -82,10 +69,6 @@ class Config:
             photo_catalog_url=os.getenv("PHOTO_CATALOG_URL", ""),
             cache_dir=os.getenv("CACHE_DIR", "/cache"),
             slide_interval_seconds=_env_int("SLIDE_INTERVAL_SECONDS", 10),
-            google_client_id=os.getenv("GOOGLE_CLIENT_ID", ""),
-            google_client_secret=os.getenv("GOOGLE_CLIENT_SECRET", ""),
-            google_refresh_token=os.getenv("GOOGLE_REFRESH_TOKEN", ""),
-            google_device_id=os.getenv("GOOGLE_DEVICE_ID", ""),
             idle_timeout_seconds=_env_int("IDLE_TIMEOUT_SECONDS", 120),
             idle_fade_seconds=_env_int("IDLE_FADE_SECONDS", 1),
             http_proxy_timeout=float(os.getenv("HTTP_PROXY_TIMEOUT", "10")),
