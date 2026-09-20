@@ -1,9 +1,10 @@
 # How to set up the HA Photo Kiosk
 
-This guide walks through installing and configuring the kiosk on a Debian-based
-box, using the **published container** (the default) and the **web config
-service** to complete setup. All screenshots are real captures from a test VM
-running the actual kiosk against a real Home Assistant instance.
+This guide walks through installing and configuring the kiosk on a light Debian
+OS (Debian, or Raspberry Pi OS), using the **published container** (the
+default) and the **web config service** to complete setup. All screenshots are
+real captures from a test VM running the actual kiosk against a real Home
+Assistant instance.
 
 ## What you'll end up with
 
@@ -14,7 +15,7 @@ a thin host supervisor keeps Chromium alive.
 
 ## 1. Prerequisites
 
-- A Debian-based box (Ubuntu/Debian/Raspberry Pi OS) with **Docker** installed.
+- A light Debian OS (Debian / Raspberry Pi OS) with **Docker** installed.
 - A reachable **Home Assistant** instance (e.g. `http://192.168.20.12:8123`).
 - Root/sudo access.
 

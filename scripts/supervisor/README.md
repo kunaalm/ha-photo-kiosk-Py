@@ -70,16 +70,5 @@ gives Chromium a clean input session.
 
 The supervisor runs Chromium **without `--no-sandbox`** — the sandbox stays
 enabled, which is the secure default. This works because the supervisor runs as
-the non-root `kiosk` user.
-
-If your Chromium is a **snap** (Ubuntu's `chromium-browser` is a transitional
-package that installs the snap), snap's confinement can conflict with
-Chromium's own sandbox and Chromium may fail to start. In that case, re-enable
-`--no-sandbox` via the env override:
-
-```
-KIOSK_CHROMIUM_FLAGS="--noerrdialogs --disable-infobars --kiosk --no-sandbox --no-first-run"
-```
-
-Prefer a non-snap Chromium (e.g. the Debian `chromium` package) so the sandbox
-can stay on.
+the non-root `kiosk` user, and the target OS (Debian / Raspberry Pi OS) ships a
+real `chromium` package (not a snap).
