@@ -19,6 +19,7 @@ from aiohttp import web
 from .config import Config
 from .config_store import ConfigStore, EDITABLE_FIELDS
 from .sources import IMAGE_EXTENSIONS, get_source
+from .auth import AuthStore, parse_basic_auth
 
 log = logging.getLogger("kiosk-engine")
 
@@ -36,9 +37,11 @@ FRAME_BLOCKING_HEADERS = {"x-frame-options", "frame-ancestors"}
 
 
 class KioskServer:
-    def __init__(self, config: Config, config_store: Optional[ConfigStore] = None):
+    def __init__(self, config: Config, config_store: Optional[ConfigStore] = None,
+                 auth_store: Optional[AuthStore] = None):
         self.config = config
         self.store = config_store or ConfigStore()
+        self.auth = auth_store or AuthStore()
         # Effective config = env defaults + file overrides (from the web service).
         self.effective = self.store.effective_config()
         self.source = get_source(self.effective)
@@ -51,6 +54,28 @@ class KioskServer:
         if self._client is None or self._client.closed:
             self._client = aiohttp.ClientSession()
         return self._client
+
+    # ---- Auth guard -----------------------------------------------------
+    def _require_auth(self, request: web.Request) -> Optional[web.Response]:
+        """Return a 401 response if the request isn't authenticated, else None.
+
+        The config/upload service is LAN-reachable; it must not be open to
+        anyone on the network. Basic auth against the kiosk-owned auth file.
+        """
+        creds = parse_basic_auth(request.headers.get("Authorization"))
+        if not creds:
+            return self._unauthorized()
+        user, pw = creds
+        if not self.auth.verify(user, pw):
+            return self._unauthorized()
+        return None
+
+    def _unauthorized(self) -> web.Response:
+        return web.Response(
+            status=401,
+            text="Authentication required.",
+            headers={"WWW-Authenticate": 'Basic realm="kiosk-config"'},
+        )
 
     # ---- HA reverse proxy ------------------------------------------------
     async def proxy_ha(self, request: web.Request) -> web.Response:
@@ -188,13 +213,29 @@ class KioskServer:
 
     # ---- Config service (web UI + API) ----------------------------------
     async def serve_config_page(self, request: web.Request) -> web.Response:
+        denied = self._require_auth(request)
+        if denied:
+            return denied
         html = Path(__file__).with_name("config.html").read_text()
         return web.Response(text=html, content_type="text/html")
 
     async def get_config(self, request: web.Request) -> web.Response:
+        denied = self._require_auth(request)
+        if denied:
+            return denied
         return web.json_response(self.store.public_state())
 
     async def post_config(self, request: web.Request) -> web.Response:
+        denied = self._require_auth(request)
+        if denied:
+            return denied
+        # While the password must be changed, refuse config writes so the
+        # operator is forced to set a real password first.
+        if self.auth.must_change():
+            return web.json_response(
+                {"ok": False, "error": "change the default password first"},
+                status=403,
+            )
         try:
             data = await request.json()
         except Exception:
@@ -213,7 +254,37 @@ class KioskServer:
         self.store.save(data)
         return web.json_response({"ok": True})
 
-    # ---- Photoss upload / management API ----------------------------------
+    async def change_password(self, request: web.Request) -> web.Response:
+        """Change the config password (authenticated with the current one).
+
+        Body: {"current": "...", "new": "..."}. On success clears the
+        must-change flag so config writes are allowed again.
+        """
+        denied = self._require_auth(request)
+        if denied:
+            return denied
+        try:
+            data = await request.json()
+        except Exception:
+            return web.json_response({"ok": False, "error": "invalid JSON"}, status=400)
+        current = data.get("current", "")
+        new = data.get("new", "")
+        if not self.auth.verify(self.auth.username(), current):
+            return web.json_response({"ok": False, "error": "current password incorrect"}, status=403)
+        if len(new) < 8:
+            return web.json_response({"ok": False, "error": "new password must be at least 8 characters"}, status=400)
+        self.auth.set_password(self.auth.username(), new, must_change=False)
+        log.info("config password changed")
+        return web.json_response({"ok": True})
+
+    async def auth_status(self, request: web.Request) -> web.Response:
+        """Whether the password must be changed (for the UI to show the form)."""
+        denied = self._require_auth(request)
+        if denied:
+            return denied
+        return web.json_response({"must_change": self.auth.must_change()})
+
+    # ---- Photo upload / management API ----------------------------------
     def _safe_photo_name(self, filename: str) -> Optional[str]:
         """Sanitize an uploaded filename: basename only, image extension only,
         no path separators. Returns None if rejected."""
@@ -240,6 +311,9 @@ class KioskServer:
 
     async def serve_photos_list(self, request: web.Request) -> web.Response:
         """Names of stored photos (for the upload UI)."""
+        denied = self._require_auth(request)
+        if denied:
+            return denied
         from urllib.parse import unquote
         photos = self.source.list()
         return web.json_response({"photos": [
@@ -248,6 +322,9 @@ class KioskServer:
 
     async def upload_photo(self, request: web.Request) -> web.Response:
         """Accept a multipart image upload and store it in the photo dir."""
+        denied = self._require_auth(request)
+        if denied:
+            return denied
         try:
             reader = await request.multipart()
             part = await reader.next()
@@ -276,6 +353,9 @@ class KioskServer:
 
     async def delete_photo(self, request: web.Request) -> web.Response:
         """Delete a stored photo by name (path-traversal safe)."""
+        denied = self._require_auth(request)
+        if denied:
+            return denied
         name = request.match_info["name"]
         safe = self._safe_photo_name(name)
         if safe is None:
@@ -298,12 +378,14 @@ class KioskServer:
         app.router.add_get("/photos.json", self.serve_photos)
         app.router.add_get("/images/{path:.*}", self.serve_local_image)
         app.router.add_get("/gimg/{path:.*}", self.serve_google_image)
-        # Config service (web UI + API).
+        # Config service (web UI + API) — all behind basic auth.
         app.router.add_get("/config/", self.serve_config_page)
         app.router.add_get("/config", self.serve_config_page)
         app.router.add_get("/api/config", self.get_config)
         app.router.add_post("/api/config", self.post_config)
-        # Photo upload / management API.
+        app.router.add_get("/api/auth/status", self.auth_status)
+        app.router.add_post("/api/auth/change", self.change_password)
+        # Photo upload / management API — behind basic auth.
         app.router.add_get("/api/photos", self.serve_photos_list)
         app.router.add_post("/api/photos", self.upload_photo)
         app.router.add_delete("/api/photos/{name}", self.delete_photo)

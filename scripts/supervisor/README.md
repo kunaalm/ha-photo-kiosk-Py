@@ -65,3 +65,21 @@ On a box with no physical display, point `DISPLAY` at an Xvfb instance
 (e.g. `Xvfb :0 -screen 0 1280x800x24`) and run the supervisor against it. On a
 real kiosk, `:0` is the physical display and the unit's `TTYPath=/dev/tty7`
 gives Chromium a clean input session.
+
+## Security note: Chromium sandbox
+
+The supervisor runs Chromium **without `--no-sandbox`** — the sandbox stays
+enabled, which is the secure default. This works because the supervisor runs as
+the non-root `kiosk` user.
+
+If your Chromium is a **snap** (Ubuntu's `chromium-browser` is a transitional
+package that installs the snap), snap's confinement can conflict with
+Chromium's own sandbox and Chromium may fail to start. In that case, re-enable
+`--no-sandbox` via the env override:
+
+```
+KIOSK_CHROMIUM_FLAGS="--noerrdialogs --disable-infobars --kiosk --no-sandbox --no-first-run"
+```
+
+Prefer a non-snap Chromium (e.g. the Debian `chromium` package) so the sandbox
+can stay on.

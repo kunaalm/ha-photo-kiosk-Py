@@ -19,9 +19,21 @@
 </head>
 <body>
   <h1>HA Photo Kiosk — Configuration</h1>
-  <div class="sub">Settings are saved to the engine's config file and take effect on the next engine start.</div>
-  <div class="card">
-    <label>Home Assistant URL</label>
+    <div class="sub">Settings are saved to the engine's config file and take effect on the next engine start.</div>
+
+    <div id="pw_card" class="card" style="display:none;border-color:#b8860b;margin-bottom:16px">
+      <h2 style="font-size:16px;margin:0 0 8px">Change the default password</h2>
+      <div class="sub" style="margin-bottom:12px">The installer set a temporary password. Set your own before configuring the kiosk.</div>
+      <label>Current password</label>
+      <input id="pw_current" type="password">
+      <label>New password (min 8 chars)</label>
+      <input id="pw_new" type="password">
+      <button onclick="changePassword()">Change password</button>
+      <div id="pw_status"></div>
+    </div>
+
+    <div class="card">
+      <label>Home Assistant URL</label>
     <input id="ha_url" placeholder="http://192.168.20.12:8123">
     <div class="hint">Base URL of your Home Assistant instance.</div>
 
@@ -99,6 +111,33 @@ function setStatus(msg, cls) {
   s.className = cls;
 }
 
+// ---- Password change (first-login hardening) ----
+function changePassword() {
+  var cur = document.getElementById("pw_current").value;
+  var nw = document.getElementById("pw_new").value;
+  var st = document.getElementById("pw_status");
+  fetch("/api/auth/change", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ current: cur, new: nw }),
+  }).then(r => r.json()).then(res => {
+    if (res.ok) {
+      st.textContent = "Password changed.";
+      st.className = "ok";
+      document.getElementById("pw_card").style.display = "none";
+    } else {
+      st.textContent = "Error: " + (res.error || "unknown");
+      st.className = "err";
+    }
+  }).catch(() => { st.textContent = "Change failed."; st.className = "err"; });
+}
+
+function checkMustChange() {
+  fetch("/api/auth/status").then(r => r.json()).then(res => {
+    if (res.must_change) document.getElementById("pw_card").style.display = "block";
+  }).catch(function(){});
+}
+
 // ---- Photo upload / management ----
 function photoFormData() {
   var f = document.getElementById("photo_file").files[0];
@@ -157,6 +196,7 @@ function deletePhoto(name, row) {
 
 load();
 loadPhotos();
+checkMustChange();
 </script>
 </body>
 </html>

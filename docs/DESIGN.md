@@ -169,9 +169,32 @@ Reads `frame.html`, substitutes the three timing placeholders
 - `get_config()` — `store.public_state()`.
 - `post_config()` — parse JSON, **type-validate** each field against
   `EDITABLE_FIELDS` (int/bool/str), then `store.save()`. Rejects bad types
-  with 400.
+  with 400. **Refuses writes (403) while the password must be changed**, so the
+  operator is forced to set a real password first.
+- `change_password()` — authenticated with the current password; sets a new
+  one and clears the must-change flag.
+- `auth_status()` — whether the password must be changed (for the UI).
 
-### 4h. Photo upload / management
+### 4h. Auth guard — `kiosk_py/auth.py`
+
+The config/upload service is LAN-reachable, so it's protected by HTTP Basic
+auth against a kiosk-owned file (`/config/auth.json`).
+
+- `AuthStore` — reads/writes the auth file. `verify()` checks credentials
+  against a PBKDF2-HMAC-SHA256 hash (stdlib hashlib, 200k iterations). On the
+  **first** successful login with the installer's plaintext temp password, it
+  hashes it and clears the plaintext from disk (so the temp secret isn't left
+  around), keeping `must_change: true`.
+- `set_password()` — store a new password, clear the must-change flag.
+- `parse_basic_auth()` — parse an `Authorization: Basic` header.
+- `generate_password()` — random URL-safe password (no ambiguous chars).
+
+`_require_auth()` in the server returns 401 (with `WWW-Authenticate`) on any
+config/upload route if the credentials don't match. The frame page and photo
+serving (`/frame/`, `/photos.json`, `/images`, `/gimg`) are **not** behind
+auth — the kiosk itself must render them without a login.
+
+### 4i. Photo upload / management
 
 - `_safe_photo_name(filename)` — sanitize: basename only, image extension
   only, no path separators, safe chars only. Returns `None` if rejected.

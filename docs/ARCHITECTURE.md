@@ -195,12 +195,13 @@ Chrome's DevTools Protocol).
 
 ## 7. Known limitations (honest)
 
-- **No auth on the web config/upload service.** It binds to the LAN so a laptop
-  can reach it; anyone on your network can reach it too. Fine on a trusted
-  home LAN, not on an untrusted network.
 - **Google Photos is unit-tested but not live-verified** (needs real OAuth
   credentials) — see `docs/google-photos.md`.
 - **VM harness is manual** (not CI) — it needs KVM + a real HA instance.
 - The photo-frame JS layer's rendering is verified via screenshots; the
   background HA session persistence across engine restarts isn't separately
   tested.
+- **Config service auth is Basic auth over plain HTTP** — the password is
+  sent base64-encoded, not encrypted. Fine on a trusted home LAN; use an SSH
+  tunnel or HTTPS reverse proxy if you need it encrypted on an untrusted
+  network.

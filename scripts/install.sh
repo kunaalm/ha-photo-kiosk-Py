@@ -95,10 +95,11 @@ install_user() {
     if id "$KIOSK_USER" >/dev/null 2>&1; then
         log "kiosk user '$KIOSK_USER' already exists (home $KIOSK_HOME)."
     else
-        useradd -m -s /bin/bash "$KIOSK_USER" || die "could not create user '$KIOSK_USER'."
+        # Service account: no login shell (systemd runs the supervisor as it).
+        useradd -m -s /usr/sbin/nologin "$KIOSK_USER" || die "could not create user '$KIOSK_USER'."
         # Re-derive home in case the user existed with a non-default HOME.
         KIOSK_HOME="$(getent passwd "$KIOSK_USER" | cut -d: -f6)"
-        log "created kiosk user '$KIOSK_USER' (home $KIOSK_HOME)."
+        log "created kiosk user '$KIOSK_USER' (home $KIOSK_HOME, no login shell)."
     fi
     # Everything kiosk lives under the user's home; the user owns it all.
     mkdir -p "$KIOSK_HOME/bin" "$PHOTO_HOST_DIR" "$CONFIG_HOST_DIR" "$INSTALL_DIR"
@@ -198,6 +199,41 @@ setup_photos() {
     log "photos dir ready at $PHOTO_HOST_DIR (or just upload via the web config)."
 }
 
+# --- 7. Firewall (restrict to the ports the kiosk needs) -----------------
+install_firewall() {
+    command -v ufw >/dev/null 2>&1 || { log "ufw not found; skipping firewall setup."; return 0; }
+    log "configuring ufw (allow SSH + engine port $ENGINE_PORT)..."
+    ufw allow 22/tcp >/dev/null 2>&1 || true
+    ufw allow "$ENGINE_PORT"/tcp >/dev/null 2>&1 || true
+    ufw --force enable >/dev/null 2>&1 || log "could not enable ufw (enable manually)."
+    log "firewall enabled: SSH (22) + engine ($ENGINE_PORT) allowed."
+}
+
+# --- 8. Config auth (basic auth for the web config service) --------------
+install_auth() {
+    AUTH_FILE="$CONFIG_HOST_DIR/auth.json"
+    if [ -f "$AUTH_FILE" ]; then
+        log "config auth already set up ($AUTH_FILE)."
+        return 0
+    fi
+    # Generate a random temporary password; the user changes it on first login.
+    AUTH_PASSWORD="$(tr -dc 'A-Za-z0-9' </dev/urandom | head -c 20 || true)"
+    [ -n "$AUTH_PASSWORD" ] || AUTH_PASSWORD="kiosk-$(date +%s)"
+    cat > "$AUTH_FILE" <<EOF
+{
+  "username": "kiosk",
+  "password": "$AUTH_PASSWORD",
+  "must_change": true
+}
+EOF
+    # The engine hashes the temp password on first login and clears the
+    # plaintext. Until then it's kiosk-owned and mode 600.
+    chown "$KIOSK_USER":"$KIOSK_USER" "$AUTH_FILE"
+    chmod 600 "$AUTH_FILE"
+    log "config auth set up. Temporary password: $AUTH_PASSWORD"
+    log "  (You will be asked to change it on first login.)"
+}
+
 # --- Main ----------------------------------------------------------------
 main() {
     parse_args "$@"
@@ -208,6 +244,8 @@ main() {
     install_engine_service
     install_supervisor
     setup_photos
+    install_firewall
+    install_auth
 
     # Start the engine now (container starts via compose; source via systemd).
     if [ "$MODE" = "source" ]; then
@@ -234,6 +272,9 @@ main() {
         log "  (find the kiosk's IP with: ip addr)"
         log ""
     fi
+    log "  Log in with username 'kiosk' and the temporary password printed above."
+    log "  You will be asked to change it on first login."
+    log ""
     log "  There you set:"
     log "    - Home Assistant URL (http://<your-ha-ip>:8123)"
     log "    - Idle timeout / slide interval"
