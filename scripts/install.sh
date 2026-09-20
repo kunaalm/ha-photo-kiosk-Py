@@ -90,12 +90,58 @@ fetch() {
 }
 
 # --- 1. Prerequisites ----------------------------------------------------
+# Detect the Debian Buster/CD codename for picking the right Docker apt repo.
+debian_codename() {
+    local id
+    if [ -r /etc/os-release ]; then
+        id="$(. /etc/os-release && echo "$VERSION_CODENAME")"
+        [ -n "$id" ] && echo "$id" && return 0
+    fi
+    echo "bookworm"   # sane default; fallback below via lsb_release
+}
+
+# Install Docker Engine (official apt repo) if not already present.
+install_docker() {
+    if command -v docker >/dev/null 2>&1; then
+        if docker info >/dev/null 2>&1; then
+            return 0
+        fi
+        # Binary present but daemon not running — try to start it first.
+        log "Docker found but daemon not running — starting it..."
+        systemctl enable --now docker >/dev/null 2>&1 || true
+        sleep 2
+        docker info >/dev/null 2>&1 && return 0
+    fi
+    log "Docker not found — installing Docker Engine (official repo)..."
+    command -v apt-get >/dev/null 2>&1 || die "neither Docker nor apt-get found; install Docker manually, or use: bash install.sh --from-source"
+    # We must be root to configure apt (we already checked at install start).
+    local arch code
+    arch="$(dpkg --print-architecture 2>/dev/null || echo amd64)"
+    code="$(debian_codename)"
+    apt-get update -qq >/dev/null 2>&1
+    apt-get install -y -qq ca-certificates curl gnupg >/dev/null 2>&1 \
+        || die "could not install apt prerequisites (ca-certificates/curl/gnupg)."
+    # Add Docker's official GPG key + apt repo.
+    install -m 0755 -d /etc/apt/keyrings
+    curl -fsSL "https://download.docker.com/linux/debian/gpg" \
+        -o /etc/apt/keyrings/docker.asc || die "could not fetch Docker GPG key."
+    echo "deb [arch=$arch signed-by=/etc/apt/keyrings/docker.asc] https://download.docker.com/linux/debian $code stable" \
+        > /etc/apt/sources.list.d/docker.list
+    apt-get update -qq >/dev/null 2>&1 || die "apt update failed after adding Docker repo."
+    apt-get install -y -qq docker-ce docker-ce-cli containerd.io docker-buildx-plugin docker-compose-plugin \
+        >/dev/null 2>&1 || die "could not install Docker packages (check that '${code}' is a valid Debian codename)."
+    systemctl enable --now docker >/dev/null 2>&1 || true
+    sleep 2
+    command -v docker >/dev/null 2>&1 && docker info >/dev/null 2>&1 \
+        || die "Docker installed but not usable; check 'docker info'."
+    log "Docker Engine installed + running."
+}
+
 check_prereqs() {
     [ "$(id -u)" -eq 0 ] || die "run as root (sudo)."
     command -v systemctl >/dev/null 2>&1 || die "systemd not found (systemctl missing)."
     if [ "$MODE" = "container" ]; then
-        command -v docker >/dev/null 2>&1 || die "docker not found. Install Docker, or use: bash install.sh --from-source"
-        docker info >/dev/null 2>&1 || die "docker daemon not running (or no permission)."
+        install_docker
         command -v docker compose >/dev/null 2>&1 || command -v docker-compose >/dev/null 2>&1 \
             || die "docker compose plugin not found."
         have_curl || have_wget || die "need curl or wget to fetch companion files."

@@ -42,8 +42,9 @@ curl -fsSL https://raw.githubusercontent.com/kunaalm/ha-photo-kiosk-Py/main/scri
 you run it.) It pulls the pre-built engine container, sets up the display
 supervisor, and creates the kiosk user.
 
-Needs: a light Debian OS (Debian, or Raspberry Pi OS) with **Docker**,
-and a reachable Home Assistant instance.
+Needs: a light Debian OS (Debian, or Raspberry Pi OS) and a reachable
+Home Assistant instance. **Docker is installed automatically if missing**
+(the installer adds Docker Engine from the official repo).
 
 ### 2. Configure from your laptop
 
