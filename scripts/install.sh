@@ -24,6 +24,10 @@
 # this script.
 set -eu
 
+# Never let apt/debconf block on an interactive prompt (keyboard-config,
+# tzdata, etc.) — this is a one-command non-interactive install.
+export DEBIAN_FRONTEND=noninteractive
+
 # --- Config (env-overridable) -------------------------------------------
 KIOSK_USER="${KIOSK_USER:-kiosk}"
 KIOSK_HOME="$(getent passwd "$KIOSK_USER" | cut -d: -f6)"
@@ -259,6 +263,15 @@ EOF
 install_gui() {
     # A kiosk is a physical display device — the GUI stack is mandatory.
     log "installing graphical stack (X server, Chromium, Openbox)..."
+    # X pulls in keyboard-configuration, which prompts for a layout and hangs
+    # a non-interactive install. Pre-seed the debconf answers (DEBIAN_FRONTEND
+    # is already noninteractive globally) so apt never blocks on a prompt.
+    debconf-set-selections <<'EOF'
+keyboard-configuration  keyboard-configuration/layoutcode  string  us
+keyboard-configuration  keyboard-configuration/xkb-keymap select  us
+keyboard-configuration  keyboard-configuration/variant  select  English (US)
+console-setup  console-setup/layoutcode  string  us
+EOF
     apt-get update -qq >/dev/null 2>&1
     apt-get install -y -qq xorg xserver-xorg xinit openbox chromium unclutter curl netcat-openbsd \
         >/dev/null 2>&1 || die "could not install graphical packages (xorg/chromium/openbox)."
