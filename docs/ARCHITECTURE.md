@@ -51,6 +51,14 @@ room displays — industry-standard, and it keeps the device software trivial.
 │  ┌─────────────────────────────────────────────────────────────┐                │
 │  │  HOME ASSISTANT  (elsewhere on the network, :8123)          │ ⇐─ proxied     │
 │  └─────────────────────────────────────────────────────────────┘                │
+│                                                                               │
+│  ┌──────────────────────────────────────────────────────────────────────────┐ │
+│  │  INSTALLER  (scripts/install.sh — the deployment component)             │ │
+│  │  • one-command curl|bash, no git, no clone                              │ │
+│  │  • installs the fixed prerequisite set (Docker, X, Chromium, Openbox)  │ │
+│  │  • configures + starts every service (engine, supervisor, gphotos)     │ │
+│  │  • turns a clean Debian box into a running kiosk in one shot           │ │
+│  └──────────────────────────────────────────────────────────────────────────┘ │
 └───────────────────────────────────────────────────────────────────────────────┘
 ```
 
@@ -60,6 +68,12 @@ dependency-pinned. The supervisor (display + browser + process supervision) runs
 on the host because it must own the physical framebuffer. This is the
 edge/device-agent pattern: a deliberately thin client on the device, logic in a
 managed service.
+
+**The installer is the third core component** — the deployment layer that turns
+a bare Debian box into the host above. It is not a convenience script bolted on
+after the fact; it is the primary way the product is delivered (one command, no
+git, no clone), and it owns the contract that a *clean* box becomes a *running*
+kiosk. See [§6 Installer architecture](#6-installer-architecture).
 
 ## 3. Key design decisions (and why)
 
@@ -129,7 +143,7 @@ tests/                      # unit tests (headless, CI)
   test_google_source.py     # Google source (mocked no-network)
   test_upload.py            # upload validation (magic bytes, safe names)
 tests/vm-harness/           # real-browser tests (manual; need KVM + real HA)
-scripts/install.sh / uninstall.sh   # one-command install / remove
+scripts/install.sh / uninstall.sh   # the installer — one-command curl|bash deploy (see §6)
 Dockerfile / docker-compose.yml
 .github/workflows/ci.yml, docker-publish.yml
 ```
@@ -154,7 +168,7 @@ Two layers, because the failure modes they catch are different.
 
 ### Layer 1 — Headless unit tests (CI-automated)
 
-`python -m pytest tests/` — 32 tests, no display, no Docker. Covers the state
+`python -m pytest tests/` — 48 tests, no display, no Docker. Covers the state
 machine, source listing/filtering, proxy header rewriting, config persistence,
 upload validation, and Google source (mocked). Fast, deterministic, runs on
 every push.
@@ -180,7 +194,75 @@ The harness also verified: the supervisor restarting Chromium on kill, and the
 web config + photo upload round-tripping through the actual UI (driven via
 Chrome's DevTools Protocol).
 
-## 6. Install & config flow
+## 6. Installer architecture
+
+The installer (`scripts/install.sh`) is a core component: it is the primary
+delivery mechanism and owns the contract that a **clean** Debian box becomes a
+**running** kiosk. It is deliberately self-contained — one `curl | sudo bash`,
+no git, no clone — and fetches its companion files (compose, supervisor,
+systemd units) from pinned raw URLs at install time.
+
+### 6a. The clean-box contract (R19)
+
+The installer must work on a fresh Debian / Raspberry Pi OS box with **none**
+of the runtime present — no Docker, no X, no Chromium, no git. It installs
+every prerequisite rather than assuming one exists. This is the primary use
+case and is validated on a clean box, not a pre-provisioned one.
+
+### 6b. Fixed prerequisite set (R19a)
+
+The package list is fixed and deterministic — not ad-hoc or discovered at
+runtime — so a clean box always yields the same working kiosk:
+
+| Layer | Packages |
+|---|---|
+| Container runtime | Docker Engine (official repo): `docker-ce docker-ce-cli containerd.io docker-buildx-plugin docker-compose-plugin` |
+| Graphical stack | `xorg xserver-xorg xinit openbox chromium unclutter curl netcat-openbsd` |
+| Google Photos sync | `rclone` |
+
+### 6c. Install phases
+
+The installer runs in a fixed order, each phase idempotent (safe to re-run):
+
+1. **Prereqs** — root check, systemd present, then `install_docker()` (installs
+   Docker Engine from the official apt repo if absent; starts the daemon).
+2. **Kiosk user** — creates a nologin `kiosk` service account; everything kiosk
+   lives under its home (`~/photos`, `~/config`, `~/bin`, `~/engine`).
+3. **Engine** — pulls the published container and runs it via compose (or, with
+   `--from-source`, clones the repo and installs a Python venv).
+4. **Supervisor** — installs the supervisor script + systemd unit.
+5. **GUI stack** — installs X/Chromium/Openbox, configures getty@tty1 autologin
+   for the kiosk user, and writes the Openbox autostart that launches the
+   supervisor. A kiosk is a physical display device, so this is mandatory.
+6. **Photos dir** — creates + owns `~/photos`.
+7. **Firewall** — ufw, opened only for SSH + the engine port (best-effort).
+8. **Config auth** — generates a random config-service password, forces a
+   change on first login.
+9. **Google Photos sync** — installs rclone + the sync systemd timer/path.
+
+### 6d. Configure AND start (R19b)
+
+Installing packages is not enough — the installer **starts** every service so
+the box is a working kiosk immediately, not after a manual start or reboot:
+
+- engine (container via compose, or systemd in source mode)
+- supervisor → X + Chromium on the display
+- gphotos sync timer + path watcher
+
+### 6e. The display bring-up path
+
+The supervisor systemd unit runs `xinit /usr/bin/openbox-session -- :0 vt7`
+(no display manager). Openbox's autostart launches the supervisor, which opens
+Chromium in `--kiosk` at the engine's `/frame/` page. The kiosk user is in the
+`tty` group to grab the vt7 session.
+
+### 6f. Uninstall
+
+`scripts/uninstall.sh` removes everything the installer created: the engine
+container/venv, supervisor + systemd unit, GUI autologin + openbox autostart,
+gphotos sync units, and (optionally) the kiosk user and data.
+
+## 7. Install & config flow
 
 1. `scripts/install.sh` — pulls the published container, creates the kiosk user,
    installs the supervisor systemd unit, sets up the photos dir. Points the
@@ -192,7 +274,7 @@ Chrome's DevTools Protocol).
 `--from-source` installs the engine as a Python venv instead of a container
 (for hacking without Docker).
 
-## 7. Known limitations (honest)
+## 8. Known limitations (honest)
 
 - **Google Photos** is shown by syncing to the photo folder (no cloud API) —
   see `docs/google-photos.md`.
