@@ -362,8 +362,8 @@ install_gphotos_sync() {
             "$INSTALL_DIR/kiosk-gphotos-sync.$u" > /etc/systemd/system/kiosk-gphotos-sync.$u
     done
     systemctl daemon-reload
-    systemctl enable kiosk-gphotos-sync.timer >/dev/null 2>&1
-    systemctl enable kiosk-gphotos-sync.path >/dev/null 2>&1
+    systemctl enable --now kiosk-gphotos-sync.timer >/dev/null 2>&1
+    systemctl enable --now kiosk-gphotos-sync.path >/dev/null 2>&1
     log "Google Photos sync installed: rclone + systemd timer (enable in web config)."
 }
 
@@ -420,6 +420,10 @@ main() {
         systemctl start kiosk-engine.service && log "engine started."
     fi
 
+    # Start the kiosk now — the box is a working kiosk immediately, not just
+    # configured (R19b). The supervisor brings up X + Chromium on the display.
+    systemctl start ha-photo-kiosk.service && log "kiosk started (X + Chromium on the display)."
+
     log ""
     log "=========================== INSTALL COMPLETE ========================"
     log ""
@@ -450,8 +454,8 @@ main() {
     log "  Then restart the engine for changes to take effect:"
     log "      sudo docker restart kiosk-engine       # container install"
     log ""
-    log "  To start the kiosk now:   systemctl start ha-photo-kiosk.service"
-    log "  (It also starts automatically on boot.)"
+    log "  The kiosk is already running on the display (X + Chromium)."
+    log "  It also starts automatically on boot."
     log ""
 }
 

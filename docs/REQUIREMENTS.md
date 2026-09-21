@@ -100,6 +100,12 @@ See [5. Non-goals](#5-non-goals) for why Google is sync-not-API.
   does not leave any prerequisite to the user or assume one is present. The
   exact package list is fixed in the installer (not ad-hoc or discovered at
   runtime) so a clean box always ends up with the same working kiosk.
+- R19b. **The installer configures and starts every required service.** After
+  install the kiosk is *running*, not just configured: the installer enables
+  **and starts** the engine, the display supervisor (X + Chromium), and the
+  Google Photos sync timer/path. It does not leave the user to start services
+  by hand or wait for a reboot to bring the kiosk up. A clean box is a working
+  kiosk immediately after install.
 - R20. One-command install: `curl -fsSL …/scripts/install.sh | sudo bash`.
 - R21. Default install runs the **published container** image; a Python
   stdlib venv is an install-time option (`--from-source`).
@@ -156,7 +162,7 @@ regression:
 | R8–R11 config service | ✅ implemented |
 | R12 basic auth | ✅ implemented |
 | R13–R18 security/hardening | ✅ implemented |
-| R19–R25 install/deploy | ✅ implemented (released `v0.1.0`; installer auto-installs Docker + the full GUI stack: X server, Chromium, Openbox, autologin). **R19 validated on a clean Debian 12 VM** — real `curl|bash` from a box with no Docker/X/Chromium/git, booted to a working kiosk showing a real photo |
+| R19–R25 install/deploy | ✅ implemented (released `v0.1.0`; installer auto-installs Docker + the full GUI stack: X server, Chromium, Openbox, autologin). **R19 validated on a clean Debian 12 VM** — real `curl|bash` from a box with no Docker/X/Chromium/git, booted to a working kiosk showing a real photo. **R19b: installer now starts the engine, supervisor, and gphotos timer/path** |
 | R26–R28 hobbyist presentation | ✅ implemented |
 | Test suite + VM harness | ✅ 48 tests; VM harness in `tests/vm-harness/` |
 
