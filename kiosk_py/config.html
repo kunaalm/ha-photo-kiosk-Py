@@ -85,7 +85,7 @@
     <div id="gphotos_connect" style="display:none">
       <button onclick="gphotosStart()">Connect Google Photos</button>
       <div id="gphotos_flow" style="display:none;margin-top:12px">
-        <div class="hint" style="margin-bottom:8px">The kiosk screen will open Google's sign-in. Approve it there, then come back here.</div>
+        <div class="hint" style="margin-bottom:8px">A login window will open on the kiosk screen. Sign in there, then come back here.</div>
         <div id="gphotos_poll_status" style="font-size:13px"></div>
       </div>
     </div>
@@ -274,10 +274,8 @@ function gphotosSync() {
 }
 
 function gphotosDisconnect() {
-  fetch("/api/gphotos/done", { method: "POST" })
-    .then(r => r.json()).then(res => {
-      loadGphotos();
-    }).catch(function(){});
+  // No server-side disconnect endpoint; just refresh status.
+  loadGphotos();
 }
 
 load();

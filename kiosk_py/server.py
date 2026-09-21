@@ -332,13 +332,6 @@ class KioskServer:
             return denied
         return web.json_response(await self.gphotos.start())
 
-    async def gphotos_done(self, request: web.Request) -> web.Response:
-        """Called after approval; clears the open file so the kiosk returns."""
-        denied = self._require_auth(request)
-        if denied:
-            return denied
-        self.gphotos.clear_open()
-        return web.json_response({"ok": True})
 
     # ---- Photo upload / management API ----------------------------------
     def _safe_photo_name(self, filename: str) -> Optional[str]:
@@ -447,7 +440,6 @@ class KioskServer:
         # Google Photos OAuth (host rclone, approved on the kiosk screen).
         app.router.add_get("/api/gphotos/status", self.gphotos_status)
         app.router.add_post("/api/gphotos/start", self.gphotos_start)
-        app.router.add_post("/api/gphotos/done", self.gphotos_done)
         # Photo upload / management API — behind basic auth.
         app.router.add_get("/api/photos", self.serve_photos_list)
         app.router.add_post("/api/photos", self.upload_photo)

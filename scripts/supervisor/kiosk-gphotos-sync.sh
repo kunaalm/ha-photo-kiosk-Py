@@ -84,33 +84,46 @@ main() {
         auth-run)
             # This is the auth service's ExecStart. rclone runs as a child of
             # this (still-alive) service, so it survives. We capture the OAuth
-            # URL it prints, write it to gphotos-open for the supervisor, then
-            # wait for rclone to complete (user approves on the kiosk screen).
+            # URL it prints, then launch a SEPARATE interactive Chromium window
+            # on the kiosk display for the login (the kiosk browser stays at
+            # /frame/). When rclone completes, we close the login window.
             if ! command -v rclone >/dev/null 2>&1 && ! [ -x "$RCLONE" ]; then
                 echo '{"ok":false,"error":"rclone not installed"}'
                 exit 1
             fi
-            rm -f "$CONFIG_DIR/gphotos-open"
             "$RCLONE" --config "$RCLONE_CONFIG" config create "$REMOTE" gphotos \
                 >"$CONFIG_DIR/gphotos-auth.log" 2>&1 &
             local rclone_pid=$!
-            # Poll the log for the auth URL, write it to gphotos-open.
+            # Poll the log for the auth URL.
             local url=""
             local i=0
             while [ $i -lt 20 ]; do
                 url="$(grep -oE 'https?://[^ ]+' "$CONFIG_DIR/gphotos-auth.log" 2>/dev/null | head -1)"
-                if [ -n "$url" ]; then
-                    echo "$url" > "$CONFIG_DIR/gphotos-open"
-                    chown "$KIOSK_USER":"$KIOSK_USER" "$CONFIG_DIR/gphotos-open" 2>/dev/null || true
-                    break
-                fi
+                [ -n "$url" ] && break
                 sleep 1
                 i=$((i + 1))
             done
-            # Wait for rclone to finish (user approves -> redirect -> token).
-            wait "$rclone_pid" 2>/dev/null
-            # Clear the open file so the supervisor returns to /frame/.
-            rm -f "$CONFIG_DIR/gphotos-open"
+            if [ -n "$url" ]; then
+                # Launch a separate interactive browser window on the kiosk
+                # display (DISPLAY=:0) for the login. Not kiosk mode — a normal
+                # window the user can type into.
+                local browser_pid=""
+                if command -v chromium >/dev/null 2>&1; then
+                    DISPLAY="${DISPLAY:-:0}" chromium --no-first-run --noerrdialogs "$url" \
+                        >/dev/null 2>&1 &
+                    browser_pid=$!
+                elif command -v chromium-browser >/dev/null 2>&1; then
+                    DISPLAY="${DISPLAY:-:0}" chromium-browser --no-first-run --noerrdialogs "$url" \
+                        >/dev/null 2>&1 &
+                    browser_pid=$!
+                fi
+                # Wait for rclone to finish (user approves -> redirect -> token).
+                wait "$rclone_pid" 2>/dev/null
+                # Close the login window.
+                [ -n "$browser_pid" ] && kill "$browser_pid" 2>/dev/null
+            else
+                wait "$rclone_pid" 2>/dev/null
+            fi
             # Mark OAuth as configured if the token landed in rclone.conf.
             if [ -f "$RCLONE_CONFIG" ] && grep -q "\[$REMOTE\]" "$RCLONE_CONFIG" 2>/dev/null; then
                 echo "configured" > "$CONFIG_DIR/gphotos-configured"
