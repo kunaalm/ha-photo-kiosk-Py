@@ -80,10 +80,17 @@ main() {
         [ -f "$GPHOTOS_OPEN_FILE" ] && oauth_active=1
         run_kiosk &
         local chrome_pid=$!
-        # While Chromium runs, if we were showing the OAuth URL and the engine
-        # clears gphotos-open (token stored), kill Chromium so the loop
-        # relaunches at /frame/.
+        # While Chromium runs, watch for two transitions:
+        #  - if we were showing /frame/ and gphotos-open appears (OAuth started),
+        #    kill Chromium so it relaunches at the auth URL;
+        #  - if we were showing the OAuth URL and gphotos-open clears (token
+        #    stored), kill Chromium so it relaunches at /frame/.
         while kill -0 "$chrome_pid" 2>/dev/null; do
+            if [ "$oauth_active" = "0" ] && [ -f "$GPHOTOS_OPEN_FILE" ]; then
+                log "Google OAuth started — pointing Chromium at the auth URL."
+                kill "$chrome_pid" 2>/dev/null
+                break
+            fi
             if [ "$oauth_active" = "1" ] && [ ! -f "$GPHOTOS_OPEN_FILE" ]; then
                 log "Google OAuth complete — returning to the kiosk page."
                 kill "$chrome_pid" 2>/dev/null

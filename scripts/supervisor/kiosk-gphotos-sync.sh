@@ -81,40 +81,41 @@ main() {
         status)
             cat "$STATUS_FILE" 2>/dev/null || echo '{"state":"never-run"}'
             ;;
-        auth-start)
-            # Begin the Google Photos OAuth flow (headless). rclone prints an
-            # auth URL and listens on 127.0.0.1:53682 for the redirect. We write
-            # the URL to gphotos-open so the supervisor points Chromium at it
-            # (approved on the kiosk screen). rclone runs in the background and
-            # completes once the user approves.
+        auth-run)
+            # This is the auth service's ExecStart. rclone runs as a child of
+            # this (still-alive) service, so it survives. We capture the OAuth
+            # URL it prints, write it to gphotos-open for the supervisor, then
+            # wait for rclone to complete (user approves on the kiosk screen).
             if ! command -v rclone >/dev/null 2>&1 && ! [ -x "$RCLONE" ]; then
                 echo '{"ok":false,"error":"rclone not installed"}'
                 exit 1
             fi
-            # Remove any stale open file first.
             rm -f "$CONFIG_DIR/gphotos-open"
-            # Launch rclone config create in the background; it prints the URL
-            # and waits for the redirect.
             "$RCLONE" --config "$RCLONE_CONFIG" config create "$REMOTE" gphotos \
                 >"$CONFIG_DIR/gphotos-auth.log" 2>&1 &
             local rclone_pid=$!
-            # Poll the log for the auth URL (rclone prints it within a second).
+            # Poll the log for the auth URL, write it to gphotos-open.
             local url=""
             local i=0
             while [ $i -lt 20 ]; do
                 url="$(grep -oE 'https?://[^ ]+' "$CONFIG_DIR/gphotos-auth.log" 2>/dev/null | head -1)"
-                [ -n "$url" ] && break
+                if [ -n "$url" ]; then
+                    echo "$url" > "$CONFIG_DIR/gphotos-open"
+                    chown "$KIOSK_USER":"$KIOSK_USER" "$CONFIG_DIR/gphotos-open" 2>/dev/null || true
+                    break
+                fi
                 sleep 1
                 i=$((i + 1))
             done
-            if [ -z "$url" ]; then
-                echo '{"ok":false,"error":"could not get OAuth URL from rclone"}'
-                exit 1
+            # Wait for rclone to finish (user approves -> redirect -> token).
+            wait "$rclone_pid" 2>/dev/null
+            # Clear the open file so the supervisor returns to /frame/.
+            rm -f "$CONFIG_DIR/gphotos-open"
+            # Mark OAuth as configured if the token landed in rclone.conf.
+            if [ -f "$RCLONE_CONFIG" ] && grep -q "\[$REMOTE\]" "$RCLONE_CONFIG" 2>/dev/null; then
+                echo "configured" > "$CONFIG_DIR/gphotos-configured"
+                chown "$KIOSK_USER":"$KIOSK_USER" "$CONFIG_DIR/gphotos-configured" 2>/dev/null || true
             fi
-            # Write the URL for the supervisor to open in Chromium.
-            echo "$url" > "$CONFIG_DIR/gphotos-open"
-            chown "$KIOSK_USER":"$KIOSK_USER" "$CONFIG_DIR/gphotos-open" 2>/dev/null || true
-            echo "{\"ok\":true,\"url\":\"$url\",\"pid\":$rclone_pid}"
             ;;
         auth-status)
             # Whether the OAuth completed (rclone.conf has a token for $REMOTE).
@@ -123,26 +124,6 @@ main() {
             else
                 echo '{"configured":false}'
             fi
-            ;;
-        auth-bridge)
-            # Engine -> host bridge. The engine (a container) can't run the host
-            # script, so it writes a command to gphotos-auth-trigger; the .path
-            # watcher fires this. We run the command, write the result to
-            # gphotos-auth-result.json, and clear the trigger.
-            local cmd="$(cat "$CONFIG_DIR/gphotos-auth-trigger" 2>/dev/null | tr -d '\n')"
-            rm -f "$CONFIG_DIR/gphotos-auth-trigger"
-            case "$cmd" in
-                start)
-                    "$0" auth-start > "$CONFIG_DIR/gphotos-auth-result.json" 2>&1
-                    ;;
-                status)
-                    "$0" auth-status > "$CONFIG_DIR/gphotos-auth-result.json" 2>&1
-                    ;;
-                *)
-                    echo '{"ok":false,"error":"unknown auth command"}' > "$CONFIG_DIR/gphotos-auth-result.json"
-                    ;;
-            esac
-            chown "$KIOSK_USER":"$KIOSK_USER" "$CONFIG_DIR/gphotos-auth-result.json" 2>/dev/null || true
             ;;
         *) echo "Usage: $0 {run|status|auth-start|auth-status|auth-bridge}"; exit 1 ;;
     esac

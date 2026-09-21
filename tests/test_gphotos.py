@@ -1,9 +1,7 @@
 """Tests for the Google Photos OAuth bridge (kiosk_py/gphotos.py)."""
-import json
 import os
 import sys
 import tempfile
-import time
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
@@ -17,50 +15,50 @@ def _bridge():
 
 def test_trigger_writes_command_file():
     b = _bridge()
-    b._trigger("start")
+    b._trigger()
     assert b._path("gphotos-auth-trigger").is_file()
     assert b._path("gphotos-auth-trigger").read_text().strip() == "start"
 
 
-def test_read_result_empty_when_missing():
+def test_read_url_empty_when_missing():
     b = _bridge()
-    assert b._read_result() == {}
+    assert b._read_url() == ""
 
 
-def test_read_result_parses_json():
+def test_read_url_returns_content():
     b = _bridge()
-    b._path("gphotos-auth-result.json").write_text(json.dumps({"ok": True, "url": "http://x"}))
-    assert b._read_result() == {"ok": True, "url": "http://x"}
+    b._path("gphotos-open").write_text("http://127.0.0.1:53682/auth?state=x")
+    assert b._read_url() == "http://127.0.0.1:53682/auth?state=x"
 
 
-def test_start_returns_url_when_host_writes_result():
+def test_start_returns_url_when_host_writes_open():
     b = _bridge()
-    # Simulate the host writing the result after the trigger.
-    def fake_trigger(cmd):
-        b._path("gphotos-auth-result.json").write_text(
-            json.dumps({"ok": True, "url": "http://127.0.0.1:53682/auth?state=x", "pid": 1}))
+    # Simulate the host writing gphotos-open after the trigger.
+    def fake_trigger():
+        b._path("gphotos-open").write_text("http://127.0.0.1:53682/auth?state=x")
     b._trigger = fake_trigger
     res = b.start(timeout=5)
     assert res["ok"] is True
     assert "53682" in res["url"]
 
 
-def test_start_times_out_when_no_result():
+def test_start_times_out_when_no_url():
     b = _bridge()
-    # Never write a result -> times out.
-    b._trigger = lambda cmd: None
+    b._trigger = lambda: None
     res = b.start(timeout=1)
     assert res["ok"] is False
     assert "timed out" in res["error"]
 
 
-def test_status_returns_configured():
+def test_status_not_configured_by_default():
     b = _bridge()
-    def fake_trigger(cmd):
-        b._path("gphotos-auth-result.json").write_text(json.dumps({"configured": True}))
-    b._trigger = fake_trigger
-    res = b.status(timeout=5)
-    assert res["configured"] is True
+    assert b.status() == {"configured": False}
+
+
+def test_status_configured_when_marker_present():
+    b = _bridge()
+    b._path("gphotos-configured").write_text("configured")
+    assert b.status() == {"configured": True}
 
 
 def test_clear_open_removes_file():

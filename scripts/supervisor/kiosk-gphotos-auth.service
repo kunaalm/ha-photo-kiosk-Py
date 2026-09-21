@@ -1,14 +1,17 @@
 [Unit]
-Description=HA Photo Kiosk Google Photos auth bridge
+Description=HA Photo Kiosk Google Photos OAuth (rclone)
 After=network-online.target
 Wants=network-online.target
 
 [Service]
-Type=oneshot
+Type=simple
 User=kiosk
 Group=kiosk
-# Reads the command from gphotos-auth-trigger, runs it, writes the result to
-# gphotos-auth-result.json, and clears the trigger.
-ExecStart=/home/kiosk/bin/kiosk-gphotos-sync.sh auth-bridge
+# Runs rclone config create in the FOREGROUND so it survives as this service
+# (a background child would be killed with the cgroup). It prints the OAuth URL
+# to the log and waits for the redirect on 127.0.0.1:53682. The engine reads
+# the URL from the log; when the user approves on the kiosk screen, rclone
+# completes and this service exits.
+ExecStart=/home/kiosk/bin/kiosk-gphotos-sync.sh auth-run
 Environment=CONFIG_DIR=/home/kiosk/config
 Environment=PHOTO_DIR=/home/kiosk/photos
