@@ -437,20 +437,20 @@ main() {
     check_prereqs
     progress 2 "$PROGRESS_TOTAL" "Creating kiosk user"
     install_user
-    progress 3 "$PROGRESS_TOTAL" "Installing engine"
-    install_engine
-    progress 4 "$PROGRESS_TOTAL" "Installing engine service"
-    install_engine_service
-    progress 5 "$PROGRESS_TOTAL" "Installing supervisor"
-    install_supervisor
-    progress 6 "$PROGRESS_TOTAL" "Installing graphical stack (X, Chromium, Openbox)"
-    install_gui
-    progress 7 "$PROGRESS_TOTAL" "Setting up photos dir"
-    setup_photos
-    progress 8 "$PROGRESS_TOTAL" "Configuring firewall"
-    install_firewall
-    progress 9 "$PROGRESS_TOTAL" "Setting up config auth"
+    progress 3 "$PROGRESS_TOTAL" "Setting up config auth"
     install_auth
+    progress 4 "$PROGRESS_TOTAL" "Installing engine"
+    install_engine
+    progress 5 "$PROGRESS_TOTAL" "Installing engine service"
+    install_engine_service
+    progress 6 "$PROGRESS_TOTAL" "Installing supervisor"
+    install_supervisor
+    progress 7 "$PROGRESS_TOTAL" "Installing graphical stack (X, Chromium, Openbox)"
+    install_gui
+    progress 8 "$PROGRESS_TOTAL" "Setting up photos dir"
+    setup_photos
+    progress 9 "$PROGRESS_TOTAL" "Configuring firewall"
+    install_firewall
     progress 10 "$PROGRESS_TOTAL" "Installing Google Photos sync"
     install_gphotos_sync
 
