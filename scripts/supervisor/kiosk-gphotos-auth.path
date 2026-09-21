@@ -1,0 +1,9 @@
+[Unit]
+Description=HA Photo Kiosk Google Photos auth trigger watcher
+
+[Path]
+# When the config UI writes gphotos-auth-trigger, run the auth bridge.
+PathExists=/home/kiosk/config/gphotos-auth-trigger
+
+[Install]
+WantedBy=multi-user.target

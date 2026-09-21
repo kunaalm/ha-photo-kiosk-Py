@@ -21,6 +21,7 @@ from .config_store import ConfigStore, EDITABLE_FIELDS
 from .sources import IMAGE_EXTENSIONS, get_source
 from .auth import AuthStore, parse_basic_auth
 from .sync import SyncStore
+from .gphotos import GphotosBridge
 
 log = logging.getLogger("kiosk-engine")
 
@@ -45,6 +46,7 @@ class KioskServer:
         self.store = config_store or ConfigStore()
         self.auth = auth_store or AuthStore()
         self.sync = sync_store or SyncStore()
+        self.gphotos = GphotosBridge(config_dir="/config")
         # Effective config = env defaults + file overrides (from the web service).
         self.effective = self.store.effective_config()
         self.source = get_source(self.effective)
@@ -315,6 +317,29 @@ class KioskServer:
         self.sync.request_sync()
         return web.json_response({"ok": True, "message": "sync requested"})
 
+    # ---- Google Photos OAuth (host rclone, approved on the kiosk screen) --
+    async def gphotos_status(self, request: web.Request) -> web.Response:
+        """Whether Google Photos OAuth is configured."""
+        denied = self._require_auth(request)
+        if denied:
+            return denied
+        return web.json_response(self.gphotos.status())
+
+    async def gphotos_start(self, request: web.Request) -> web.Response:
+        """Begin the OAuth flow; returns the URL the kiosk browser will open."""
+        denied = self._require_auth(request)
+        if denied:
+            return denied
+        return web.json_response(await self.gphotos.start())
+
+    async def gphotos_done(self, request: web.Request) -> web.Response:
+        """Called after approval; clears the open file so the kiosk returns."""
+        denied = self._require_auth(request)
+        if denied:
+            return denied
+        self.gphotos.clear_open()
+        return web.json_response({"ok": True})
+
     # ---- Photo upload / management API ----------------------------------
     def _safe_photo_name(self, filename: str) -> Optional[str]:
         """Sanitize an uploaded filename: basename only, image extension only,
@@ -419,6 +444,10 @@ class KioskServer:
         app.router.add_get("/api/sync", self.get_sync)
         app.router.add_post("/api/sync", self.post_sync)
         app.router.add_post("/api/sync/trigger", self.trigger_sync)
+        # Google Photos OAuth (host rclone, approved on the kiosk screen).
+        app.router.add_get("/api/gphotos/status", self.gphotos_status)
+        app.router.add_post("/api/gphotos/start", self.gphotos_start)
+        app.router.add_post("/api/gphotos/done", self.gphotos_done)
         # Photo upload / management API — behind basic auth.
         app.router.add_get("/api/photos", self.serve_photos_list)
         app.router.add_post("/api/photos", self.upload_photo)

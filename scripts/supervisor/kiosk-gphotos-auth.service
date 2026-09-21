@@ -1,0 +1,14 @@
+[Unit]
+Description=HA Photo Kiosk Google Photos auth bridge
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+User=kiosk
+Group=kiosk
+# Reads the command from gphotos-auth-trigger, runs it, writes the result to
+# gphotos-auth-result.json, and clears the trigger.
+ExecStart=/home/kiosk/bin/kiosk-gphotos-sync.sh auth-bridge
+Environment=CONFIG_DIR=/home/kiosk/config
+Environment=PHOTO_DIR=/home/kiosk/photos

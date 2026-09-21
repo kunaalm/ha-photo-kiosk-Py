@@ -77,31 +77,25 @@
 
     <hr style="border:none;border-top:1px solid #333;margin:20px 0">
 
-    <h2 style="font-size:16px;margin:0 0 8px">Google Photos sync</h2>
-    <div class="sub" style="margin-bottom:12px">Syncs your Google Photos into the kiosk's photo folder. This needs a <b>one-time setup on the kiosk</b> (run once, as the kiosk user):</div>
-    <div class="hint" style="margin-bottom:12px">
-      <code>sudo su - kiosk</code><br>
-      <code>rclone config</code> &nbsp;→ choose <b>Google Photos</b>, follow the OAuth link, name the remote <b>gphotos</b>
+    <h2 style="font-size:16px;margin:0 0 8px">Google Photos</h2>
+    <div class="sub" style="margin-bottom:12px">Show your Google Photos in the photo frame. Connect your Google account — you'll approve it on the kiosk screen.</div>
+
+    <div id="gphotos_status" style="margin-bottom:12px;font-size:13px"></div>
+
+    <div id="gphotos_connect" style="display:none">
+      <button onclick="gphotosStart()">Connect Google Photos</button>
+      <div id="gphotos_flow" style="display:none;margin-top:12px">
+        <div class="hint" style="margin-bottom:8px">The kiosk screen will open Google's sign-in. Approve it there, then come back here.</div>
+        <div id="gphotos_poll_status" style="font-size:13px"></div>
+      </div>
     </div>
-    <div class="hint" style="margin-bottom:12px">That's the only interactive step — it authorizes rclone to read your Google Photos. Then enable sync below.</div>
 
-    <label>Enabled</label>
-    <select id="sync_enabled">
-      <option value="false">Disabled</option>
-      <option value="true">Enabled</option>
-    </select>
-
-    <label>rclone remote name</label>
-    <input id="sync_remote" placeholder="gphotos">
-    <div class="hint">The remote you named in <code>rclone config</code> (default <code>gphotos</code>).</div>
-
-    <label>Source path</label>
-    <input id="sync_source_path" placeholder="media/by-month">
-    <div class="hint">Sync runs on a schedule (systemd timer, hourly) and when you hit "Sync now".</div>
-
-    <div id="sync_status" style="margin-top:14px;font-size:13px"></div>
-    <button onclick="saveSync()">Save sync config</button>
-    <button onclick="triggerSync()" style="margin-left:8px">Sync now</button>
+    <div id="gphotos_configured" style="display:none">
+      <div class="hint" style="margin-bottom:8px">Google Photos is connected.</div>
+      <button onclick="gphotosSync()">Sync photos now</button>
+      <button onclick="gphotosDisconnect()" style="margin-left:8px">Disconnect</button>
+      <div id="gphotos_sync_status" style="margin-top:8px;font-size:13px"></div>
+    </div>
   </div>
 
 <script>
@@ -223,65 +217,73 @@ function deletePhoto(name, row) {
     }).catch(function(){});
 }
 
-// ---- Google Photos sync ----
-function loadSync() {
-  fetch("/api/sync").then(r => r.json()).then(s => {
-    document.getElementById("sync_enabled").value = s.enabled ? "true" : "false";
-    document.getElementById("sync_remote").value = s.remote || "";
-    document.getElementById("sync_source_path").value = s.source_path || "";
-    renderSyncStatus(s);
+// ---- Google Photos (host rclone, approved on the kiosk screen) ----
+function loadGphotos() {
+  fetch("/api/gphotos/status").then(r => r.json()).then(s => {
+    var st = document.getElementById("gphotos_status");
+    if (s.configured) {
+      st.textContent = "Connected to Google Photos.";
+      st.className = "ok";
+      document.getElementById("gphotos_connect").style.display = "none";
+      document.getElementById("gphotos_configured").style.display = "block";
+    } else {
+      st.textContent = "Not connected. Connect your Google account to show your photos.";
+      st.className = "";
+      document.getElementById("gphotos_connect").style.display = "block";
+      document.getElementById("gphotos_configured").style.display = "none";
+    }
   }).catch(function(){});
 }
 
-function renderSyncStatus(s) {
-  var el = document.getElementById("sync_status");
-  if (s.state === "ok" && s.last_run) {
-    el.textContent = "Last sync: " + s.last_run + " (" + s.photo_count + " photos)";
-    el.className = "ok";
-  } else if (s.state === "error" && s.last_error) {
-    el.textContent = "Last sync failed (" + s.last_run + "): " + s.last_error;
-    el.className = "err";
-  } else if (s.state === "running") {
-    el.textContent = "Sync in progress...";
-    el.className = "";
-  } else {
-    el.textContent = "No sync has run yet. Enable + Sync now to start.";
-    el.className = "";
-  }
+function gphotosStart() {
+  var st = document.getElementById("gphotos_poll_status");
+  st.textContent = "Starting Google sign-in on the kiosk screen...";
+  st.className = "";
+  document.getElementById("gphotos_flow").style.display = "block";
+  fetch("/api/gphotos/start", { method: "POST" })
+    .then(r => r.json()).then(res => {
+      if (!res.ok) { st.textContent = "Error: " + (res.error || "unknown"); st.className = "err"; return; }
+      st.textContent = "The kiosk screen is showing Google's sign-in. Approve it there, then wait here.";
+      gphotosPoll();
+    }).catch(() => { st.textContent = "Could not start sign-in."; st.className = "err"; });
 }
 
-function saveSync() {
-  var body = {
-    enabled: document.getElementById("sync_enabled").value === "true",
-    remote: document.getElementById("sync_remote").value,
-    source_path: document.getElementById("sync_source_path").value,
-  };
-  fetch("/api/sync", {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(body),
-  }).then(r => r.json()).then(res => {
-    var el = document.getElementById("sync_status");
-    el.textContent = res.ok ? "Sync config saved." : ("Error: " + (res.error || "unknown"));
-    el.className = res.ok ? "ok" : "err";
-  }).catch(() => { var el = document.getElementById("sync_status"); el.textContent = "Save failed."; el.className = "err"; });
+function gphotosPoll() {
+  var st = document.getElementById("gphotos_poll_status");
+  fetch("/api/gphotos/status").then(r => r.json()).then(s => {
+    if (s.configured) {
+      st.textContent = "Connected!";
+      st.className = "ok";
+      loadGphotos();
+    } else {
+      st.textContent = "Waiting for you to approve on the kiosk screen...";
+      setTimeout(gphotosPoll, 5000);
+    }
+  }).catch(() => { setTimeout(gphotosPoll, 5000); });
 }
 
-function triggerSync() {
-  var el = document.getElementById("sync_status");
-  el.textContent = "Requesting sync...";
-  el.className = "";
+function gphotosSync() {
+  var st = document.getElementById("gphotos_sync_status");
+  st.textContent = "Syncing photos...";
+  st.className = "";
   fetch("/api/sync/trigger", { method: "POST" })
     .then(r => r.json()).then(res => {
-      el.textContent = res.ok ? "Sync requested. Check back in a minute." : ("Error: " + (res.error || "unknown"));
-      el.className = res.ok ? "ok" : "err";
-    }).catch(() => { el.textContent = "Request failed."; el.className = "err"; });
+      st.textContent = res.ok ? "Sync requested. Photos will appear shortly." : ("Error: " + (res.error || "unknown"));
+      st.className = res.ok ? "ok" : "err";
+    }).catch(() => { st.textContent = "Sync request failed."; st.className = "err"; });
+}
+
+function gphotosDisconnect() {
+  fetch("/api/gphotos/done", { method: "POST" })
+    .then(r => r.json()).then(res => {
+      loadGphotos();
+    }).catch(function(){});
 }
 
 load();
 loadPhotos();
 checkMustChange();
-loadSync();
+loadGphotos();
 </script>
 </body>
 </html>

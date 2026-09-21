@@ -394,6 +394,8 @@ install_gphotos_sync() {
     fetch "scripts/supervisor/kiosk-gphotos-sync.service"
     fetch "scripts/supervisor/kiosk-gphotos-sync.timer"
     fetch "scripts/supervisor/kiosk-gphotos-sync.path"
+    fetch "scripts/supervisor/kiosk-gphotos-auth.service"
+    fetch "scripts/supervisor/kiosk-gphotos-auth.path"
     install -m 0755 "$INSTALL_DIR/kiosk-gphotos-sync.sh" "$GP_SYNC_BIN"
     chown "$KIOSK_USER":"$KIOSK_USER" "$GP_SYNC_BIN" "$KIOSK_HOME/bin"
     # Substitute the kiosk user/home into the units, write to systemd.
@@ -403,9 +405,17 @@ install_gphotos_sync() {
             -e "s|/home/kiosk/|$KIOSK_HOME/|g" \
             "$INSTALL_DIR/kiosk-gphotos-sync.$u" > /etc/systemd/system/kiosk-gphotos-sync.$u
     done
+    # Google Photos OAuth bridge (engine -> host rclone).
+    for u in service path; do
+        sed -e "s|User=kiosk|User=$KIOSK_USER|" \
+            -e "s|Group=kiosk|Group=$KIOSK_USER|" \
+            -e "s|/home/kiosk/|$KIOSK_HOME/|g" \
+            "$INSTALL_DIR/kiosk-gphotos-auth.$u" > /etc/systemd/system/kiosk-gphotos-auth.$u
+    done
     systemctl daemon-reload
     systemctl enable --now kiosk-gphotos-sync.timer >/dev/null 2>&1
     systemctl enable --now kiosk-gphotos-sync.path >/dev/null 2>&1
+    systemctl enable --now kiosk-gphotos-auth.path >/dev/null 2>&1
     log "Google Photos sync installed: rclone + systemd timer (enable in web config)."
 }
 
