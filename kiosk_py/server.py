@@ -236,7 +236,19 @@ class KioskServer:
             if t == "str" and not isinstance(v, str):
                 return web.json_response({"ok": False, "error": f"{k} must be a string"}, status=400)
         self.store.save(data)
+        # Apply the change live so the user doesn't have to restart the engine.
+        self._reload_effective()
         return web.json_response({"ok": True})
+
+    def _reload_effective(self) -> None:
+        """Re-read config from the store and rebuild the source + HA origin.
+
+        Called after a config save so changes apply immediately instead of
+        requiring an engine restart.
+        """
+        self.effective = self.store.effective_config()
+        self.source = get_source(self.effective)
+        self.ha_origin = self.effective.ha_url
 
     async def change_password(self, request: web.Request) -> web.Response:
         """Change the config password (authenticated with the current one).

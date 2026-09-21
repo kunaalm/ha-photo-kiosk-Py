@@ -78,7 +78,12 @@
     <hr style="border:none;border-top:1px solid #333;margin:20px 0">
 
     <h2 style="font-size:16px;margin:0 0 8px">Google Photos sync</h2>
-    <div class="sub" style="margin-bottom:12px">Sync your Google Photos into the kiosk's photo folder via rclone (runs on the kiosk host). First run <code>rclone config</code> to set up the remote, then enable below.</div>
+    <div class="sub" style="margin-bottom:12px">Syncs your Google Photos into the kiosk's photo folder. This needs a <b>one-time setup on the kiosk</b> (run once, as the kiosk user):</div>
+    <div class="hint" style="margin-bottom:12px">
+      <code>sudo su - kiosk</code><br>
+      <code>rclone config</code> &nbsp;→ choose <b>Google Photos</b>, follow the OAuth link, name the remote <b>gphotos</b>
+    </div>
+    <div class="hint" style="margin-bottom:12px">That's the only interactive step — it authorizes rclone to read your Google Photos. Then enable sync below.</div>
 
     <label>Enabled</label>
     <select id="sync_enabled">
@@ -88,7 +93,7 @@
 
     <label>rclone remote name</label>
     <input id="sync_remote" placeholder="gphotos">
-    <div class="hint">The remote you configured with <code>rclone config</code>.</div>
+    <div class="hint">The remote you named in <code>rclone config</code> (default <code>gphotos</code>).</div>
 
     <label>Source path</label>
     <input id="sync_source_path" placeholder="media/by-month">
@@ -123,7 +128,7 @@ function save() {
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(body),
   }).then(r => r.json()).then(res => {
-    setStatus(res.ok ? "Saved. Restart the engine to apply." : "Error: " + (res.error || "unknown"), res.ok ? "ok" : "err");
+    setStatus(res.ok ? "Saved and applied." : "Error: " + (res.error || "unknown"), res.ok ? "ok" : "err");
   }).catch(() => setStatus("Save failed.", "err"));
 }
 
@@ -144,9 +149,11 @@ function changePassword() {
     body: JSON.stringify({ current: cur, new: nw }),
   }).then(r => r.json()).then(res => {
     if (res.ok) {
-      st.textContent = "Password changed.";
+      st.textContent = "Password changed. Log in again with your new password.";
       st.className = "ok";
-      document.getElementById("pw_card").style.display = "none";
+      // The browser caches the old Basic-auth credentials; force it to
+      // re-prompt for the new password by reloading.
+      setTimeout(function(){ location.reload(); }, 800);
     } else {
       st.textContent = "Error: " + (res.error || "unknown");
       st.className = "err";
