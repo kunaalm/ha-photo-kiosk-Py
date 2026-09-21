@@ -110,10 +110,9 @@ See [5. Non-goals](#5-non-goals) for why Google is sync-not-API.
 
 ### 4.6 Hobbyist-friendly presentation (S)
 - R26. README is demo-first and short.
-- R27. Real screenshots and a demo GIF in the docs.
-- R28. Real photographs everywhere in docs/demo — **no gradient/pattern
+- R27. Real photographs everywhere in docs/demo — **no gradient/pattern
   stand-ins**.
-- R29. Architecture and design docs for auditing generated code.
+- R28. Architecture and design docs for auditing generated code.
 
 ## 5. Non-goals
 
@@ -158,7 +157,7 @@ regression:
 | R12 basic auth | ✅ implemented |
 | R13–R18 security/hardening | ✅ implemented |
 | R19–R25 install/deploy | ✅ implemented (released `v0.1.0`; installer auto-installs Docker + the full GUI stack: X server, Chromium, Openbox, autologin). **R19 validated on a clean Debian 12 VM** — real `curl|bash` from a box with no Docker/X/Chromium/git, booted to a working kiosk showing a real photo |
-| R26–R29 hobbyist presentation | ✅ implemented |
+| R26–R28 hobbyist presentation | ✅ implemented |
 | Test suite + VM harness | ✅ 48 tests; VM harness in `tests/vm-harness/` |
 
 ## How to use this document
