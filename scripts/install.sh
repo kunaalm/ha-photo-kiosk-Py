@@ -186,6 +186,11 @@ install_user() {
     # Everything kiosk lives under the user's home; the user owns it all.
     mkdir -p "$KIOSK_HOME/bin" "$PHOTO_HOST_DIR" "$CONFIG_HOST_DIR" "$INSTALL_DIR"
     chown -R "$KIOSK_USER":"$KIOSK_USER" "$KIOSK_HOME"
+    # The engine container must run as the SAME uid/gid as the host kiosk user,
+    # or it can't read the mode-600 bind-mounted files (auth.json, config).
+    KIOSK_UID="$(id -u "$KIOSK_USER")"
+    KIOSK_GID="$(id -g "$KIOSK_USER")"
+    log "kiosk user uid/gid: $KIOSK_UID/$KIOSK_GID"
 }
 
 # --- 3. Engine: container (default) or venv (--from-source) -------------
@@ -200,6 +205,10 @@ install_engine() {
 services:
   kiosk-engine:
     image: ${IMAGE}
+    # Run as the host kiosk user's uid/gid so the container can read/write the
+    # bind-mounted mode-600 files (auth.json, config). The image's own kiosk
+    # user (uid 1000) may differ from the host's, which breaks auth.
+    user: "${KIOSK_UID}:${KIOSK_GID}"
     ports:
       - "8080:8080"              # reachable from LAN for config/upload from a laptop
     environment:
