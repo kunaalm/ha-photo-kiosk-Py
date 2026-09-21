@@ -87,20 +87,26 @@ See [5. Non-goals](#5-non-goals) for why Google is sync-not-API.
 - R18. No credentials in the codebase, docs, or notes — reference by location.
 
 ### 4.5 Installation & deployment (M)
-- R19. One-command install: `curl -fsSL …/scripts/install.sh | sudo bash`.
-- R20. Default install runs the **published container** image; a Python
+- R19. **Works on a clean Debian install.** The installer must take a fresh
+  Debian / Raspberry Pi OS box (no Docker, no X, no Chromium, no git) and
+  turn it into a working kiosk — installing every prerequisite it needs
+  (Docker, the graphical stack, the browser) rather than assuming they exist.
+  This is the primary use case and must be validated on a clean box, not a
+  pre-provisioned one.
+- R20. One-command install: `curl -fsSL …/scripts/install.sh | sudo bash`.
+- R21. Default install runs the **published container** image; a Python
   stdlib venv is an install-time option (`--from-source`).
-- R21. Installer completes setup by directing the user to the web config.
-- R22. Real GitHub releases with versioned container tags.
-- R23. A host supervisor keeps Chromium alive.
-- R24. Clean uninstall script removes everything it created.
+- R22. Installer completes setup by directing the user to the web config.
+- R23. Real GitHub releases with versioned container tags.
+- R24. A host supervisor keeps Chromium alive.
+- R25. Clean uninstall script removes everything it created.
 
 ### 4.6 Hobbyist-friendly presentation (S)
-- R25. README is demo-first and short.
-- R26. Real screenshots and a demo GIF in the docs.
-- R27. Real photographs everywhere in docs/demo — **no gradient/pattern
+- R26. README is demo-first and short.
+- R27. Real screenshots and a demo GIF in the docs.
+- R28. Real photographs everywhere in docs/demo — **no gradient/pattern
   stand-ins**.
-- R28. Architecture and design docs for auditing generated code.
+- R29. Architecture and design docs for auditing generated code.
 
 ## 5. Non-goals
 
@@ -144,8 +150,8 @@ regression:
 | R8–R11 config service | ✅ implemented |
 | R12 basic auth | ✅ implemented |
 | R13–R18 security/hardening | ✅ implemented |
-| R19–R24 install/deploy | ✅ implemented (released `v0.1.0`; installer now auto-installs Docker + the full GUI stack: X server, Chromium, Openbox, autologin) |
-| R25–R28 hobbyist presentation | ✅ implemented |
+| R19–R25 install/deploy | ✅ implemented (released `v0.1.0`; installer auto-installs Docker + the full GUI stack: X server, Chromium, Openbox, autologin). **R19 validated on a clean Debian 12 VM** — real `curl|bash` from a box with no Docker/X/Chromium/git, booted to a working kiosk showing a real photo |
+| R26–R29 hobbyist presentation | ✅ implemented |
 | Test suite + VM harness | ✅ 48 tests; VM harness in `tests/vm-harness/` |
 
 ## How to use this document
