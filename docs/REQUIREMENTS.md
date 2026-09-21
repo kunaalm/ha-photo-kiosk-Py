@@ -90,9 +90,16 @@ See [5. Non-goals](#5-non-goals) for why Google is sync-not-API.
 - R19. **Works on a clean Debian install.** The installer must take a fresh
   Debian / Raspberry Pi OS box (no Docker, no X, no Chromium, no git) and
   turn it into a working kiosk — installing every prerequisite it needs
-  (Docker, the graphical stack, the browser) rather than assuming they exist.
-  This is the primary use case and must be validated on a clean box, not a
-  pre-provisioned one.
+  rather than assuming they exist. This is the primary use case and must be
+  validated on a clean box, not a pre-provisioned one.
+- R19a. **All prerequisites are installed by the installer; the package set
+  is fixed and complete.** The installer installs the full, deterministic
+  set of packages the kiosk needs — Docker Engine (official repo), the
+  graphical stack (X server, Chromium, Openbox, xinit, unclutter), and
+  supporting tools (curl, netcat) — plus rclone for Google Photos sync. It
+  does not leave any prerequisite to the user or assume one is present. The
+  exact package list is fixed in the installer (not ad-hoc or discovered at
+  runtime) so a clean box always ends up with the same working kiosk.
 - R20. One-command install: `curl -fsSL …/scripts/install.sh | sudo bash`.
 - R21. Default install runs the **published container** image; a Python
   stdlib venv is an install-time option (`--from-source`).
