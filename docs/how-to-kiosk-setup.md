@@ -26,16 +26,22 @@ a thin host supervisor keeps Chromium alive.
 
 ## 2. Install
 
-Download the repo and run the installer. It installs the graphical stack
-(X server, Chromium, Openbox), pulls the published container from GHCR (no
-local build), creates the `kiosk` user, installs the supervisor + systemd
-unit, and sets up the photos dir.
+One command, straight from GitHub — no clone, no compile, no git needed:
 
 ```bash
-git clone https://github.com/kunaalm/ha-photo-kiosk-Py.git
-cd ha-photo-kiosk-Py
-sudo bash scripts/install.sh
+curl -fsSL https://raw.githubusercontent.com/kunaalm/ha-photo-kiosk-Py/main/scripts/install.sh | sudo bash
 ```
+
+(Prefer to read it first? `curl -fsSL <that URL>` shows the whole script before
+you run it.) The installer installs the graphical stack (X server, Chromium,
+Openbox), pulls the published container from GHCR (no local build), creates
+the `kiosk` user, installs the supervisor + systemd unit, and sets up the
+photos dir.
+
+> **Git is not required.** The default install is fully self-contained — the
+> script fetches its companion files (compose, supervisor, systemd units) from
+> pinned raw URLs at install time. `git clone` is only for the
+> `--from-source` development path (see the README).
 
 The installer prints a summary and — importantly — **tells you to open the web
 config service from a laptop**:
