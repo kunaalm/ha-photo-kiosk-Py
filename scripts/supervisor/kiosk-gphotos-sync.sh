@@ -81,7 +81,57 @@ main() {
         status)
             cat "$STATUS_FILE" 2>/dev/null || echo '{"state":"never-run"}'
             ;;
-        *) echo "Usage: $0 {run|status}"; exit 1 ;;
+        auth-start)
+            # Begin the Google Photos OAuth flow (headless). Prints a JSON
+            # object with the authorization URL + code the user must approve.
+            # The engine relays this to the web config UI.
+            if ! command -v rclone >/dev/null 2>&1 && ! [ -x "$RCLONE" ]; then
+                echo '{"ok":false,"error":"rclone not installed"}'
+                exit 1
+            fi
+            # rclone config create <remote> drive --auth-no-open-browser
+            # prints the URL + code to stderr; capture and relay it.
+            local out
+            out="$("$RCLONE" --config "$RCLONE_CONFIG" config create "$REMOTE" drive \
+                --auth-no-open-browser 2>&1 </dev/null)"
+            # rclone prints something like:
+            #   If your browser doesn't open automatically go to the following link:
+            #   http://127.0.0.1:53682/auth?state=...
+            #   Log in and authorize rclone for access
+            #   Enter verification code> 
+            local url code
+            url="$(echo "$out" | grep -oE 'https?://[^ ]+' | head -1)"
+            code="$(echo "$out" | grep -oE 'Enter verification code' >/dev/null && echo '')"
+            if [ -z "$url" ]; then
+                echo "{\"ok\":false,\"error\":\"could not start OAuth: $out\"}"
+                exit 1
+            fi
+            echo "{\"ok\":true,\"url\":\"$url\",\"remote\":\"$REMOTE\"}"
+            ;;
+        auth-complete)
+            # Finish the OAuth flow with the verification code the user pasted
+            # into the web UI. rclone config update <remote> drive --config ...
+            # with the code completes the token exchange.
+            local code="${2:-}"
+            if [ -z "$code" ]; then
+                echo '{"ok":false,"error":"no verification code provided"}'
+                exit 1
+            fi
+            if ! command -v rclone >/dev/null 2>&1 && ! [ -x "$RCLONE" ]; then
+                echo '{"ok":false,"error":"rclone not installed"}'
+                exit 1
+            fi
+            # rclone reads the code from stdin for the interactive prompt.
+            if ! echo "$code" | "$RCLONE" --config "$RCLONE_CONFIG" config update "$REMOTE" drive \
+                --auth-no-open-browser 2>/tmp/kiosk-auth-err.log </dev/null; then
+                local err
+                err="$(tail -1 /tmp/kiosk-auth-err.log 2>/dev/null | tr -d '\n')"
+                echo "{\"ok\":false,\"error\":\"$err\"}"
+                exit 1
+            fi
+            echo "{\"ok\":true,\"remote\":\"$REMOTE\"}"
+            ;;
+        *) echo "Usage: $0 {run|status|auth-start|auth-complete <code>}"; exit 1 ;;
     esac
 }
 

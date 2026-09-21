@@ -21,6 +21,7 @@ from .config_store import ConfigStore, EDITABLE_FIELDS
 from .sources import IMAGE_EXTENSIONS, get_source
 from .auth import AuthStore, parse_basic_auth
 from .sync import SyncStore
+from .gphotos import GooglePhotosOAuth
 
 log = logging.getLogger("kiosk-engine")
 
@@ -45,6 +46,11 @@ class KioskServer:
         self.store = config_store or ConfigStore()
         self.auth = auth_store or AuthStore()
         self.sync = sync_store or SyncStore()
+        self.gphotos = GooglePhotosOAuth(
+            config_dir="/config",
+            client_id=self.config.google_client_id,
+            client_secret=self.config.google_client_secret,
+        )
         # Effective config = env defaults + file overrides (from the web service).
         self.effective = self.store.effective_config()
         self.source = get_source(self.effective)
@@ -315,6 +321,67 @@ class KioskServer:
         self.sync.request_sync()
         return web.json_response({"ok": True, "message": "sync requested"})
 
+    # ---- Google Photos OAuth (device-code, web-driven) ------------------
+    async def gphotos_status(self, request: web.Request) -> web.Response:
+        """Whether Google Photos OAuth is configured."""
+        denied = self._require_auth(request)
+        if denied:
+            return denied
+        return web.json_response(self.gphotos.status())
+
+    async def gphotos_start(self, request: web.Request) -> web.Response:
+        """Begin the device-code flow; returns the URL + code for the UI."""
+        denied = self._require_auth(request)
+        if denied:
+            return denied
+        return web.json_response(await self.gphotos.start())
+
+    async def gphotos_poll(self, request: web.Request) -> web.Response:
+        """Poll Google until the user approves; stores the token on success."""
+        denied = self._require_auth(request)
+        if denied:
+            return denied
+        return web.json_response(await self.gphotos.poll())
+
+    async def gphotos_disconnect(self, request: web.Request) -> web.Response:
+        """Remove the stored Google token (disconnect the account)."""
+        denied = self._require_auth(request)
+        if denied:
+            return denied
+        self.gphotos.disconnect()
+        return web.json_response({"ok": True})
+
+    async def gphotos_fetch(self, request: web.Request) -> web.Response:
+        """Download Google Photos into the photo dir so the frame can show them."""
+        denied = self._require_auth(request)
+        if denied:
+            return denied
+        if not self.gphotos.is_configured():
+            return web.json_response({"ok": False, "error": "Google Photos not connected"}, status=400)
+        items = await self.gphotos.list_photos(limit=50)
+        if not items:
+            return web.json_response({"ok": True, "downloaded": 0, "message": "no photos found"})
+        dest = Path(self.effective.photo_dir)
+        dest.mkdir(parents=True, exist_ok=True)
+        client = await self._get_client()
+        count = 0
+        for it in items:
+            base = it.get("baseUrl") or it.get("mediaFile", {}).get("baseUrl")
+            if not base:
+                continue
+            # Append =d to get the full image (default is a thumbnail).
+            url = base + "=d"
+            name = it.get("id", f"gphoto-{count}") + ".jpg"
+            try:
+                async with client.get(url) as r:
+                    if r.status == 200:
+                        data = await r.read()
+                        (dest / name).write_bytes(data)
+                        count += 1
+            except Exception:
+                continue
+        return web.json_response({"ok": True, "downloaded": count})
+
     # ---- Photo upload / management API ----------------------------------
     def _safe_photo_name(self, filename: str) -> Optional[str]:
         """Sanitize an uploaded filename: basename only, image extension only,
@@ -419,6 +486,12 @@ class KioskServer:
         app.router.add_get("/api/sync", self.get_sync)
         app.router.add_post("/api/sync", self.post_sync)
         app.router.add_post("/api/sync/trigger", self.trigger_sync)
+        # Google Photos OAuth (device-code, web-driven) — behind basic auth.
+        app.router.add_get("/api/gphotos/status", self.gphotos_status)
+        app.router.add_post("/api/gphotos/start", self.gphotos_start)
+        app.router.add_post("/api/gphotos/poll", self.gphotos_poll)
+        app.router.add_post("/api/gphotos/disconnect", self.gphotos_disconnect)
+        app.router.add_post("/api/gphotos/fetch", self.gphotos_fetch)
         # Photo upload / management API — behind basic auth.
         app.router.add_get("/api/photos", self.serve_photos_list)
         app.router.add_post("/api/photos", self.upload_photo)
