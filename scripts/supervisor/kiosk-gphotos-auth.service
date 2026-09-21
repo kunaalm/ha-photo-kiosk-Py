@@ -9,9 +9,11 @@ User=kiosk
 Group=kiosk
 # Runs rclone config create in the FOREGROUND so it survives as this service
 # (a background child would be killed with the cgroup). It prints the OAuth URL
-# to the log and waits for the redirect on 127.0.0.1:53682. The engine reads
-# the URL from the log; when the user approves on the kiosk screen, rclone
-# completes and this service exits.
-ExecStart=/home/kiosk/bin/kiosk-gphotos-sync.sh auth-run
+# and launches a SEPARATE interactive browser window on the kiosk display for
+# the login (the kiosk browser stays at /frame/). When the user approves,
+# rclone completes and this service exits.
 Environment=CONFIG_DIR=/home/kiosk/config
 Environment=PHOTO_DIR=/home/kiosk/photos
+Environment=DISPLAY=:0
+Environment=XAUTHORITY=/var/run/kiosk.auth
+ExecStart=/home/kiosk/bin/kiosk-gphotos-sync.sh auth-run

@@ -106,15 +106,19 @@ main() {
             if [ -n "$url" ]; then
                 # Launch a separate interactive browser window on the kiosk
                 # display (DISPLAY=:0) for the login. Not kiosk mode — a normal
-                # window the user can type into.
+                # window the user can type into. MUST use a separate
+                # --user-data-dir, or Chromium's single-instance lock hands the
+                # URL off to the existing kiosk browser instead of opening a
+                # new window.
                 local browser_pid=""
+                local login_profile="$CONFIG_DIR/gphotos-login-profile"
                 if command -v chromium >/dev/null 2>&1; then
-                    DISPLAY="${DISPLAY:-:0}" chromium --no-first-run --noerrdialogs "$url" \
-                        >/dev/null 2>&1 &
+                    DISPLAY="${DISPLAY:-:0}" chromium --no-first-run --noerrdialogs \
+                        --user-data-dir="$login_profile" "$url" >/dev/null 2>&1 &
                     browser_pid=$!
                 elif command -v chromium-browser >/dev/null 2>&1; then
-                    DISPLAY="${DISPLAY:-:0}" chromium-browser --no-first-run --noerrdialogs "$url" \
-                        >/dev/null 2>&1 &
+                    DISPLAY="${DISPLAY:-:0}" chromium-browser --no-first-run --noerrdialogs \
+                        --user-data-dir="$login_profile" "$url" >/dev/null 2>&1 &
                     browser_pid=$!
                 fi
                 # Wait for rclone to finish (user approves -> redirect -> token).
