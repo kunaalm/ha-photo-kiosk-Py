@@ -258,9 +258,8 @@ function gphotosPoll() {
   fetch("/api/gphotos/poll", { method: "POST" })
     .then(r => r.json()).then(res => {
       if (res.ok) {
-        st.textContent = "Connected!";
-        st.className = "ok";
-        loadGphotos();
+        st.textContent = "Connected! Creating the kiosk device...";
+        gphotosCreateDevice();
       } else if (res.pending) {
         st.textContent = "Waiting for you to approve in the browser...";
         setTimeout(gphotosPoll, 5000);
@@ -269,6 +268,38 @@ function gphotosPoll() {
         st.className = "err";
       }
     }).catch(() => { st.textContent = "Poll failed."; st.className = "err"; });
+}
+
+function gphotosCreateDevice() {
+  var st = document.getElementById("gphotos_poll_status");
+  fetch("/api/gphotos/create-device", { method: "POST" })
+    .then(r => r.json()).then(res => {
+      if (!res.ok) { st.textContent = "Error: " + (res.error || "unknown"); st.className = "err"; return; }
+      if (res.media_sources_set) {
+        st.textContent = "Device ready!";
+        st.className = "ok";
+        loadGphotos();
+      } else {
+        st.textContent = "Open the Google Photos app on your phone, go to the device settings, and choose which albums to show. Then wait here.";
+        st.className = "";
+        setTimeout(gphotosDeviceStatus, 5000);
+      }
+    }).catch(() => { st.textContent = "Could not create device."; st.className = "err"; });
+}
+
+function gphotosDeviceStatus() {
+  var st = document.getElementById("gphotos_poll_status");
+  fetch("/api/gphotos/device-status", { method: "POST" })
+    .then(r => r.json()).then(res => {
+      if (res.ok && res.media_sources_set) {
+        st.textContent = "Device ready!";
+        st.className = "ok";
+        loadGphotos();
+      } else {
+        st.textContent = "Waiting for you to pick albums in the Google Photos app...";
+        setTimeout(gphotosDeviceStatus, 5000);
+      }
+    }).catch(() => { setTimeout(gphotosDeviceStatus, 5000); });
 }
 
 function gphotosDisconnect() {

@@ -64,7 +64,7 @@ def test_start_calls_device_endpoint(monkeypatch):
     assert res["verification_url"] == "https://google.com/device"
     assert captured["url"] == "https://oauth2.googleapis.com/device/code"
     assert captured["body"]["client_id"] == "test-client"
-    assert "photoslibrary.readonly" in captured["body"]["scope"]
+    assert "photosambient.mediaitems" in captured["body"]["scope"]
 
 
 def test_poll_no_flow_in_progress():
@@ -135,9 +135,50 @@ def test_poll_success_stores_token(monkeypatch):
     assert tok["refresh_token"] == "rt"
 
 
-def test_disconnect_removes_token():
+def test_create_device_requires_auth():
+    o = _oauth()
+    async def run():
+        return await o.create_device()
+    res = asyncio.run(run())
+    assert res["ok"] is False
+    assert "not authenticated" in res["error"]
+
+
+def test_create_device_saves(monkeypatch):
+    o = _oauth()
+    o._save_token({"access_token": "at", "refresh_token": "rt"})
+
+    class FakeResp:
+        status = 200
+        async def json(self):
+            return {"id": "dev-1", "displayName": "HA Photo Kiosk",
+                    "mediaSourcesSet": False, "settingsUri": "https://photos.google.com/dev"}
+
+    class FakeSession:
+        async def __aenter__(self): return self
+        async def __aexit__(self, *a): return False
+        def post(self, url, json=None, headers=None):
+            return _Ctx(FakeResp())
+
+    class _Ctx:
+        def __init__(self, resp): self._r = resp
+        async def __aenter__(self): return self._r
+        async def __aexit__(self, *a): return False
+
+    monkeypatch.setattr("kiosk_py.gphotos.aiohttp.ClientSession", FakeSession)
+    async def run():
+        return await o.create_device()
+    res = asyncio.run(run())
+    assert res["ok"] is True
+    assert res["device"]["id"] == "dev-1"
+    assert o._load_device()["id"] == "dev-1"
+
+
+def test_disconnect_removes_token_and_device():
     o = _oauth()
     o._save_token({"refresh_token": "rt"})
+    o._save_device({"id": "dev-1"})
     assert o.is_configured() is True
     o.disconnect()
     assert o.is_configured() is False
+    assert o._load_device() is None

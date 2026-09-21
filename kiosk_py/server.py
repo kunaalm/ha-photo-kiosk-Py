@@ -343,6 +343,20 @@ class KioskServer:
             return denied
         return web.json_response(await self.gphotos.poll())
 
+    async def gphotos_create_device(self, request: web.Request) -> web.Response:
+        """Create the Ambient device; returns the settings URI for media sources."""
+        denied = self._require_auth(request)
+        if denied:
+            return denied
+        return web.json_response(await self.gphotos.create_device())
+
+    async def gphotos_device_status(self, request: web.Request) -> web.Response:
+        """Poll the device until media sources are configured."""
+        denied = self._require_auth(request)
+        if denied:
+            return denied
+        return web.json_response(await self.gphotos.device_status())
+
     async def gphotos_disconnect(self, request: web.Request) -> web.Response:
         """Remove the stored Google token (disconnect the account)."""
         denied = self._require_auth(request)
@@ -489,6 +503,8 @@ class KioskServer:
         app.router.add_get("/api/gphotos/status", self.gphotos_status)
         app.router.add_post("/api/gphotos/start", self.gphotos_start)
         app.router.add_post("/api/gphotos/poll", self.gphotos_poll)
+        app.router.add_post("/api/gphotos/create-device", self.gphotos_create_device)
+        app.router.add_post("/api/gphotos/device-status", self.gphotos_device_status)
         app.router.add_post("/api/gphotos/disconnect", self.gphotos_disconnect)
         app.router.add_post("/api/gphotos/fetch", self.gphotos_fetch)
         # Photo upload / management API — behind basic auth.
