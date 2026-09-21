@@ -36,7 +36,8 @@ assume a fleet to manage.
 - **Compute:** low-power SBC acceptable; the frame and dashboard are driven by
   a browser (Chromium).
 - **Network:** local LAN. The kiosk reaches Home Assistant and (optionally)
-  Google Photos over the internet.
+  Google Photos over the internet. Google Photos via the Ambient API requires
+  the owner to create a **Google Cloud project + OAuth client** (R7).
 - **Maintenance:** the owner is technical (a CTO) but the *deployment* is
   meant to be married-and-simple.
 - **Credentials / security:** there are secrets (HA token, config password).
@@ -59,15 +60,17 @@ Prioritized: **M**andatory, **S**hould, **C**ould.
   owner can populate by (a) uploading via the web config, or (b) mounting a
   volume.
 - R6. **HTTP catalog source**: an optional URL returning a photo list/feed.
-- R7. **Google Photos**: NOT read directly in-app. The owner opts in to a
-  **built-in sync mechanism** (rclone on the host) that pulls their Google
-  Photos into the local photo folder on a schedule. The engine never talks to
-  Google. **rclone's OAuth is driven headless from the web config UI** — the
-  UI shows a verification URL + code, the owner approves in any browser, and
-  pastes the code back. No CLI, no Google Cloud project (rclone ships its own
-  OAuth client).
+- R7. **Google Photos**: read via the **Ambient API** (Google's successor to
+  the Library API, built for ambient display devices). The engine talks to
+  Google directly. **OAuth is a device-code flow driven entirely from the web
+  config UI** — the UI shows a verification URL + code, the owner approves in
+  any browser, and the engine polls until the token lands. Requires the owner
+  to create a **Google Cloud project + OAuth client** (client id/secret set in
+  config). After connecting, the engine creates an Ambient device and the
+  owner configures its media sources once in the Google Photos app; the engine
+  then lists + downloads the device's media into the photo folder.
 
-See [5. Non-goals](#5-non-goals) for why Google is sync-not-API.
+See [5. Non-goals](#5-non-goals) for what Google integration is *not*.
 
 ### 4.3 Web config service (M)
 - R8. Served by the engine; reachable from the LAN so configuration happens
@@ -75,9 +78,9 @@ See [5. Non-goals](#5-non-goals) for why Google is sync-not-API.
 - R9. Configure: HA URL, photo source, photo directory, idle timeout, slide
   interval, idle fade.
 - R10. Manage photos: upload, list, delete.
-- R11. **Google Photos sync section:** connect the account (headless OAuth
-  driven from the UI), enable/disable, rclone remote name, source path,
-  trigger "Sync now", and show sync status (last run / error / count).
+- R11. **Google Photos sync section:** connect the account (device-code OAuth
+  driven from the UI), create the Ambient device, guide the one-time media-source
+  setup, trigger "Fetch photos", and show sync status (last run / error / count).
 - R12. All config/management endpoints are **basic-auth protected**.
 
 ### 4.4 Security & hardening (M)
@@ -99,14 +102,14 @@ See [5. Non-goals](#5-non-goals) for why Google is sync-not-API.
   is fixed and complete.** The installer installs the full, deterministic
   set of packages the kiosk needs — Docker Engine (official repo), the
   graphical stack (X server, Chromium, Openbox, xinit, unclutter), and
-  supporting tools (curl, netcat) — plus rclone for Google Photos sync. It
+  supporting tools (curl, netcat). It
   does not leave any prerequisite to the user or assume one is present. The
   exact package list is fixed in the installer (not ad-hoc or discovered at
   runtime) so a clean box always ends up with the same working kiosk.
 - R19b. **The installer configures and starts every required service.** After
   install the kiosk is *running*, not just configured: the installer enables
   **and starts** the engine, the display supervisor (X + Chromium), and the
-  Google Photos sync timer/path. It does not leave the user to start services
+  Google Photos sync mechanism. It does not leave the user to start services
   by hand or wait for a reboot to bring the kiosk up. A clean box is a working
   kiosk immediately after install.
 - R20. One-command install: `curl -fsSL …/scripts/install.sh | sudo bash`.
@@ -122,20 +125,16 @@ See [5. Non-goals](#5-non-goals) for why Google is sync-not-API.
 Explicitly *out of scope* — writing these down prevents scope creep and
 regression:
 
-- **NG1. Google Photos Ambient API / Picker API in-app.** These are product
-  integrations for commercial "ambient display" devices (a fleet to manage, an
-  OAuth client, a consent/device flow). This is a personal homelab box; the
-  correct mechanism is **sync-to-folder via rclone** (R7). Rejected and removed.
-- **NG1a. Engine-side Google OAuth (device-code in the app).** Requires the
-  owner to create a Google Cloud project + OAuth client, which is out of scope
-  for a homelab. Rejected. Google access goes through **rclone**, which ships
-  its own OAuth client and needs no project.
+- **NG1. Google Photos via rclone / Library API.** Not used. Google access is
+  the **Ambient API** (R7), which is the current supported path. rclone is not
+  a photo source; the Library API is deprecated (scopes removed 2025-04-01).
 - **NG2. Apple Photos.** No public API; not built.
 - **NG3. Ubuntu / snap-first.** Target is light Debian / Raspberry Pi OS.
 - **NG4. Multi-user / fleet / cloud account management.** Not a product.
 - **NG5. Enterprise SSO, Active Directory, etc.**
-- **NG6. A Photo Cloud API at all inside the app.** Cloud photos enter via
-  local files only (rclone syncs them into the folder).
+- **NG6. A managed fleet / commercial ambient-display product integration.**
+  The Ambient API is used as a *personal* device integration, not a fleet
+  management product.
 - **NG7. Running Chromium unsandboxed / as root.**
 - **NG8. Anything that breaks the "configure from a PC, not the kiosk screen"**
   model.
@@ -159,7 +158,7 @@ regression:
 | R1–R4 two-state kiosk | ✅ implemented |
 | R5 local source | ✅ implemented |
 | R6 HTTP source | ✅ implemented |
-| R7 Google Photos sync | ✅ implemented (rclone, `0f4dd62`) |
+| R7 Google Photos sync | 🔄 migrating to Ambient API (engine in `gphotos.py`; installer/supervisor still on rclone) |
 | R8–R11 config service | ✅ implemented |
 | R12 basic auth | ✅ implemented |
 | R13–R18 security/hardening | ✅ implemented |
