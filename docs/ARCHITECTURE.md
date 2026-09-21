@@ -29,7 +29,7 @@ The two states:
 ```
 
 This is the same "attract mode" pattern used by digital signage and conference
-room displays — industry-standard, and it keeps the device software trivial.
+room displays.
 
 ## 2. Components
 
@@ -62,11 +62,11 @@ room displays — industry-standard, and it keeps the device software trivial.
 └───────────────────────────────────────────────────────────────────────────────┘
 ```
 
-**The split is deliberate.** The engine (all the smarts) is a container: pure
+The engine (all the smarts) is a container: pure
 network + compute, zero display dependency — so it's fully testable headless and
 dependency-pinned. The supervisor (display + browser + process supervision) runs
 on the host because it must own the physical framebuffer. This is the
-edge/device-agent pattern: a deliberately thin client on the device, logic in a
+edge/device-agent pattern: a thin client on the device, logic in a
 managed service.
 
 **The installer is the third core component** — the deployment layer that turns
@@ -75,7 +75,7 @@ after the fact; it is the primary way the product is delivered (one command, no
 git, no clone), and it owns the contract that a *clean* box becomes a *running*
 kiosk. See [§6 Installer architecture](#6-installer-architecture).
 
-## 3. Key design decisions (and why)
+## 3. Key design decisions
 
 ### 3a. Reverse proxy instead of an iframe or browser restart
 
@@ -85,7 +85,7 @@ engine **reverse-proxies** HA behind itself and strips that header, allowing the
 kiosk page to embed HA in an iframe. Browser restarts are avoided entirely, so
 the HA login survives and flipping back to the dashboard is instant.
 
-Two hard-won proxy details (found by real-browser testing, see §5):
+Two proxy details found by real-browser testing (see §5):
 
 - **Root-path proxying.** HA's frontend references assets at absolute paths
   (`/frontend_latest/...`, `/static/...`). Proxying under a `/ha/` subpath made
@@ -118,7 +118,7 @@ mechanical additions. Implemented:
 A browser-accessible config service (`/config/`) sets HA URL, idle timeout, and
 photo source, and lets you **upload photos** — so a hobbyist never needs to ssh
 into the kiosk or touch its filesystem. Google credentials are env-only (they're
-secrets; the config store is deliberately whitelisted to non-secret fields).
+secrets; the config store is whitelisted to non-secret fields).
 
 ## 4. Implementation map
 
@@ -173,7 +173,7 @@ machine, source listing/filtering, proxy header rewriting, config persistence,
 upload validation, and Google source (mocked). Fast, deterministic, runs on
 every push.
 
-### Layer 2 — Real-browser VM harness (manual, the important one)
+### Layer 2 — Real-browser VM harness (manual)
 
 `tests/vm-harness/` boots a QEMU/KVM VM with Xvfb + real Chromium against a real
 Home Assistant instance, drives the actual ACTIVE→IDLE→ACTIVE toggle, and
@@ -198,7 +198,7 @@ Chrome's DevTools Protocol).
 
 The installer (`scripts/install.sh`) is a core component: it is the primary
 delivery mechanism and owns the contract that a **clean** Debian box becomes a
-**running** kiosk. It is deliberately self-contained — one `curl | sudo bash`,
+**running** kiosk. It is self-contained — one `curl | sudo bash`,
 no git, no clone — and fetches its companion files (compose, supervisor,
 systemd units) from pinned raw URLs at install time.
 
@@ -274,7 +274,7 @@ gphotos sync units, and (optionally) the kiosk user and data.
 `--from-source` installs the engine as a Python venv instead of a container
 (for hacking without Docker).
 
-## 8. Known limitations (honest)
+## 8. Known limitations
 
 - **Google Photos** is shown by syncing to the photo folder (no cloud API) —
   see `docs/google-photos.md`.

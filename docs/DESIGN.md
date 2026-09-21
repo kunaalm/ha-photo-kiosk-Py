@@ -112,7 +112,7 @@ the HA catch-all):
 
 ### 4b. HA reverse proxy — `proxy_ha()`
 
-The core trick. HA is proxied at the **root** (`/`), not a subpath, because
+HA is proxied at the **root** (`/`), not a subpath, because
 HA's frontend references assets at absolute paths (`/frontend_latest/...`,
 `/static/...`) — a `/ha/` subpath would 404 them (black screen).
 
@@ -136,7 +136,7 @@ proxying HA without WS support silently breaks live dashboard updates.
 
 ### 4d. Header hygiene — `_rewrite_response_headers()` + `_rewrite_location()`
 
-Two hard-won fixes (found by real-browser testing):
+Two fixes found by real-browser testing:
 - **Drop** `content-length` (aiohttp recomputes), `content-encoding` (aiohttp
   already decompressed the body; forwarding it makes the browser try to
   inflate plain bytes → black screen), `transfer-encoding`, `connection`,
@@ -299,7 +299,7 @@ POSTs a multipart file to `/api/photos`; `loadPhotos()` lists them;
 
 ## 9. Supervisor — `scripts/supervisor/kiosk-supervisor.sh`
 
-The deliberately-thin host process. Three jobs:
+The thin host process. Three jobs:
 
 1. `wait_for_engine()` — poll `ENGINE_READY_URL` (default
    `http://localhost:8080/frame/`) until 200, up to `ENGINE_WAIT_MAX` (120s).

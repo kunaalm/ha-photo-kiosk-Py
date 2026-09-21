@@ -94,7 +94,7 @@ launch Chromium at the kiosk page on boot.
 
 ```bash
 sudo systemctl start ha-photo-kiosk.service   # start now
-# (it also starts automatically on boot — that's the point)
+# (it also starts automatically on boot)
 ```
 
 You'll see your dashboard:

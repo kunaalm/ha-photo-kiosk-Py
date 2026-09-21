@@ -2,7 +2,7 @@
 
 The engine is designed so its core (state machine, photo sources, proxy header
 handling) is **headless-testable** — no display, no Docker, no browser. That's
-the unit-test layer. But the whole point of a kiosk is that a *browser renders
+the unit-test layer. But a kiosk is a *browser that renders
 it*, and unit tests can't prove that. So there's a second, real-browser layer.
 
 ## Level 1 — Unit tests (headless, CI-automated)
@@ -15,7 +15,7 @@ Covers: the idle/active state machine (exact timestamps, deterministic), photo
 source listing/filtering, and proxy response-header rewriting (frame-blocking
 strip, Location rewrite, Content-Encoding drop). 17 tests, no I/O, no display.
 
-## Level 2 — Real-browser VM harness (manual, the important one)
+## Level 2 — Real-browser VM harness (manual)
 
 A QEMU/KVM VM with Xvfb + real Chromium, pointed at a real Home Assistant
 instance, driving the actual two-state toggle. This is the test level that
@@ -114,7 +114,7 @@ page reflects the change. (Note: driven via CDP because synthetic X events
 don't reach Chromium reliably in a WM-less Xvfb; CDP is the standard web-UI
 automation interface and still exercises the real page in a real browser.)
 
-## Coverage gaps (honest)
+## Coverage gaps
 
 - The VM harness is **manual** (not CI-automated) — it needs KVM + a real HA
   instance, which a hosted runner can't provide. It's the documented repro

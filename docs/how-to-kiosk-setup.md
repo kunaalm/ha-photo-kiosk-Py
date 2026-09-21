@@ -43,7 +43,7 @@ photos dir.
 > pinned raw URLs at install time. `git clone` is only for the
 > `--from-source` development path (see the README).
 
-The installer prints a summary and — importantly — **tells you to open the web
+The installer prints a summary and **tells you to open the web
 config service from a laptop**:
 
 ```

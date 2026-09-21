@@ -1,6 +1,6 @@
 # Host-side supervisor
 
-The deliberately-thin host process that owns the browser + display. It is the
+The thin host process that owns the browser + display. It is the
 counterpart to the engine container: the engine has all the smarts (proxy,
 photo sources, idle detection, config), the supervisor just makes sure a
 Chromium kiosk is always showing the frame page.
@@ -16,7 +16,7 @@ Chromium kiosk is always showing the frame page.
    never goes dark.
 
 It does **not** do idle detection (client-side JS), proxying (engine), or
-config (engine's config service). It is intentionally dumb — display + process
+config (engine's config service). It is dumb by design — display + process
 supervision only. This is the edge/device-agent pattern: thin client on the
 metal, logic in a managed service.
 
