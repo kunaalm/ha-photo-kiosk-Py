@@ -57,15 +57,13 @@ sudo systemctl enable --now ha-photo-kiosk.service
 | `KIOSK_ENGINE_WAIT_INTERVAL` | `2` | poll interval |
 | `KIOSK_CHROMIUM_BIN` | `chromium-browser` | Chromium binary |
 | `KIOSK_CHROMIUM_FLAGS` | kiosk flags | Chromium launch flags |
-| `DISPLAY` | `:0` | X display (physical on a real kiosk, Xvfb on headless) |
+| `DISPLAY` | `:0` | X display (the physical display) |
 
-## Headless note
+## Display
 
-On a box with no physical display, install with `--no-x` (skips the GUI stack)
-and point `DISPLAY` at an Xvfb instance (e.g. `Xvfb :0 -screen 0 1280x800x24`)
-and run the supervisor against it. On a real kiosk, `:0` is the physical
-display and the unit's `TTYPath=/dev/tty7` gives Chromium a clean input
-session.
+The kiosk is a physical display device: the unit starts X on `:0` (vt7) and
+runs the Openbox session, whose autostart launches the supervisor (Chromium).
+`TTYPath=/dev/tty7` gives Chromium a clean input session.
 
 ## Security note: Chromium sandbox
 

@@ -373,7 +373,7 @@ Runs the supervisor as the `kiosk` user on the display session:
   (the supervisor also waits for it itself).
 - `User/Group=kiosk`, `ExecStart` → the supervisor script (path substituted
   by the installer).
-- `Environment=DISPLAY=:0` — the physical display (or Xvfb on headless).
+- `Environment=DISPLAY=:0` — the physical display.
 - `Restart=always` — belt-and-braces on top of the script's own Chromium
   restart loop.
 - `StandardInput=tty` + `TTYPath=/dev/tty7` — a clean TTY so Chromium can

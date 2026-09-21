@@ -21,8 +21,8 @@ a thin host supervisor keeps Chromium alive.
 - Root/sudo access.
 
 > **Docker and the graphical stack (X server, Chromium, Openbox) are installed
-> automatically by the installer** — you don't need them pre-installed. On a
-> box with no physical display, add `--no-x` to skip the GUI stack (headless).
+> automatically by the installer** — you don't need them pre-installed. The
+> kiosk is a physical display device; it boots straight into the UI on it.
 
 ## 2. Install
 
@@ -144,8 +144,9 @@ For how everything works under the hood, see
   `systemctl status kiosk-gphotos-sync`.
 - **Kiosk not starting** — `journalctl -u ha-photo-kiosk.service` shows the
   supervisor log; it waits for the engine then launches Chromium.
-- **Headless box** — the supervisor defaults to `DISPLAY=:0`. On a box with no
-  physical display, run Xvfb on `:0` (see the supervisor README).
+- **Kiosk not showing anything** — the supervisor defaults to `DISPLAY=:0`.
+  Confirm a monitor is attached and the kiosk service is running
+  (`systemctl status ha-photo-kiosk.service`).
 
 ## Uninstall
 

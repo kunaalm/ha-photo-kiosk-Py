@@ -41,7 +41,6 @@ IMAGE="${IMAGE:-ghcr.io/kunaalm/ha-photo-kiosk-py:latest}"
 REPO_RAW="${REPO_RAW:-https://raw.githubusercontent.com/kunaalm/ha-photo-kiosk-Py/main}"
 REPO_GIT="https://github.com/kunaalm/ha-photo-kiosk-Py.git"
 MODE="container"   # container | source
-KIOSK_DISPLAY="${KIOSK_DISPLAY:-gui}"   # gui (physical, default) | headless
 
 log() { echo "[kiosk-install] $*"; }
 die() { echo "[kiosk-install] ERROR: $*" >&2; exit 1; }
@@ -65,7 +64,6 @@ parse_args() {
     while [ $# -gt 0 ]; do
         case "$1" in
             --from-source) MODE="source" ;;
-            --no-x) KIOSK_DISPLAY="headless" ;;
             --help|-h) echo "Usage: install.sh [--from-source]"; exit 0 ;;
             *) die "unknown option: $1 (try --help)" ;;
         esac
@@ -243,7 +241,7 @@ EOF
 # Ported from the original HA-Chromium-Kiosk approach — no display manager,
 # xinit + openbox-session on vt7, getty@tty1 autologin for the kiosk user.
 install_gui() {
-    [ "$KIOSK_DISPLAY" = "gui" ] || { log "skipping GUI stack (KIOSK_DISPLAY=headless)."; return 0; }
+    # A kiosk is a physical display device — the GUI stack is mandatory.
     log "installing graphical stack (X server, Chromium, Openbox)..."
     apt-get update -qq >/dev/null 2>&1
     apt-get install -y -qq xorg xserver-xorg xinit openbox chromium unclutter curl netcat-openbsd \
