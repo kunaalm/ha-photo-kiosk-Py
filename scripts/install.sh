@@ -344,8 +344,12 @@ install_firewall() {
 # --- 8. Config auth (basic auth for the web config service) --------------
 install_auth() {
     AUTH_FILE="$CONFIG_HOST_DIR/auth.json"
-    if [ -f "$AUTH_FILE" ]; then
-        log "config auth already set up ($AUTH_FILE)."
+    # Reset to a known temp password on every run. If the user has already set
+    # their own password (hashed, must_change=false), leave it alone. Otherwise
+    # regenerate + print a fresh password so the operator is never locked out by
+    # a leftover auth file from an earlier attempt.
+    if [ -f "$AUTH_FILE" ] && grep -q '"password_hash"' "$AUTH_FILE" 2>/dev/null             && ! grep -q '"must_change": *true' "$AUTH_FILE" 2>/dev/null; then
+        log "config auth already set by the operator (keeping it)."
         return 0
     fi
     # Generate a random temporary password; the user changes it on first login.
