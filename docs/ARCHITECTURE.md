@@ -35,31 +35,31 @@ room displays.
 
 ```
 ┌─────────────────────────────── HOST (the kiosk box) ───────────────────────────┐
-│                                                                               │
-│  ┌─────────────────────────────┐        ┌──────────────────────────────────┐  │
-│  │  ENGINE  (Docker container) │        │  SUPERVISOR  (systemd + script)  │  │
-│  │  • reverse-proxies HA       │        │  • waits for engine to be up     │  │
-│  │  • serves the kiosk page    │        │  • launches Chromium at /frame/  │  │
-│  │  • serves photos            │        │  • restarts Chromium on crash    │  │
-│  │  • web config + photo upload│        └──────────────────────────────────┘  │
-│  │  • photo sources (pluggable)│                   │                          │
+│                                                                                │
+│  ┌─────────────────────────────┐        ┌──────────────────────────────────┐   │
+│  │  ENGINE  (Docker container) │        │  SUPERVISOR  (systemd + script)  │   │
+│  │  • reverse-proxies HA       │        │  • waits for engine to be up     │   │
+│  │  • serves the kiosk page    │        │  • launches Chromium at /frame/  │   │
+│  │  • serves photos            │        │  • restarts Chromium on crash    │   │
+│  │  • web config + photo upload│        └──────────────────────────────────┘   │
+│  │  • photo sources (pluggable)│                   │                           │
 │  └─────────────────────────────┘                   ▼ (owns the framebuffer)    │
-│              │  HTTP :8080                    ┌──────────────┐                  │
-│              ▼                                │   Chromium   │  one tab at      │
-│                                   ┌─────────► │   kiosk      │  localhost:8080  │
+│              │  HTTP :8080                    ┌──────────────┐                 │
+│              ▼                                │   Chromium   │  one tab at     │
+│                                   ┌─────────► │   kiosk      │  localhost:8080 │
 │                                   │           └──────────────┘   /frame/       │
-│  ┌─────────────────────────────────────────────────────────────┐                │
-│  │  HOME ASSISTANT  (elsewhere on the network, :8123)          │ ⇐─ proxied     │
-│  └─────────────────────────────────────────────────────────────┘                │
-│                                                                               │
-│  ┌──────────────────────────────────────────────────────────────────────────┐ │
-│  │  INSTALLER  (scripts/install.sh — the deployment component)             │ │
-│  │  • one-command curl|bash, no git, no clone                              │ │
-│  │  • installs the fixed prerequisite set (Docker, X, Chromium, Openbox)  │ │
-│  │  • configures + starts every service (engine, supervisor, gphotos)     │ │
-│  │  • turns a clean Debian box into a running kiosk in one shot           │ │
-│  └──────────────────────────────────────────────────────────────────────────┘ │
-└───────────────────────────────────────────────────────────────────────────────┘
+│  ┌─────────────────────────────────────────────────────────────┐               │
+│  │  HOME ASSISTANT  (elsewhere on the network, :8123)          │ ⇐─ proxied    │
+│  └─────────────────────────────────────────────────────────────┘               │
+│                                                                                │
+│  ┌──────────────────────────────────────────────────────────────────────────┐  │
+│  │  INSTALLER  (scripts/install.sh — the deployment component)              │  │
+│  │  • one-command curl|bash, no git, no clone                               │  │
+│  │  • installs the fixed prerequisite set (Docker, X, Chromium, Openbox)    │  │
+│  │  • configures + starts every service (engine, supervisor, gphotos)       │  │
+│  │  • turns a clean Debian box into a running kiosk in one shot             │  │
+│  └──────────────────────────────────────────────────────────────────────────┘  │
+└────────────────────────────────────────────────────────────────────────────────┘
 ```
 
 The engine (all the smarts) is a container: pure
@@ -108,10 +108,10 @@ dependency, no host-side idleness watcher.
 A tiny `Source` protocol (`list() -> List[Photo]`) means new sources are
 mechanical additions. Implemented:
 
-| Source | What it is | How the frame loads it |
-|---|---|---|
-| `local` | A directory of images | Engine serves them at `/images/*` (same origin) |
-| `http` | Any URL/feed returning a JSON photo catalog | Direct URLs |
+| Source | What it is                                  | How the frame loads it                          |
+|--------|---------------------------------------------|-------------------------------------------------|
+| `local`|  A directory of images                      | Engine serves them at `/images/*` (same origin) |
+| `http` | Any URL/feed returning a JSON photo catalog | Direct URLs                                     |
 
 ### 3d. Web config + upload, not filesystem edits
 
