@@ -54,6 +54,10 @@ class Config:
     # --- Misc ---
     http_proxy_timeout: float = 10.0
 
+    # --- Google Photos (device-code OAuth) ---
+    google_client_id: str = ""
+    google_client_secret: str = ""
+
     source_specific: dict = field(default_factory=dict)
 
     @classmethod
@@ -72,4 +76,6 @@ class Config:
             idle_timeout_seconds=_env_int("IDLE_TIMEOUT_SECONDS", 120),
             idle_fade_seconds=_env_int("IDLE_FADE_SECONDS", 1),
             http_proxy_timeout=float(os.getenv("HTTP_PROXY_TIMEOUT", "10")),
+            google_client_id=os.getenv("GOOGLE_CLIENT_ID", ""),
+            google_client_secret=os.getenv("GOOGLE_CLIENT_SECRET", ""),
         )

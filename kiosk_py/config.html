@@ -78,23 +78,25 @@
     <hr style="border:none;border-top:1px solid #333;margin:20px 0">
 
     <h2 style="font-size:16px;margin:0 0 8px">Google Photos</h2>
-    <div class="sub" style="margin-bottom:12px">Show your Google Photos in the photo frame. Connect your Google account — you'll approve it on the kiosk screen.</div>
+    <div class="sub" style="margin-bottom:12px">Show your Google Photos in the photo frame. Connect your Google account below — no terminal needed.</div>
 
     <div id="gphotos_status" style="margin-bottom:12px;font-size:13px"></div>
 
     <div id="gphotos_connect" style="display:none">
       <button onclick="gphotosStart()">Connect Google Photos</button>
       <div id="gphotos_flow" style="display:none;margin-top:12px">
-        <div class="hint" style="margin-bottom:8px">A login window will open on the kiosk screen. Sign in there, then come back here.</div>
+        <div class="hint" style="margin-bottom:8px">Open this link in any browser, sign in, and enter the code:</div>
+        <div style="margin-bottom:8px"><a id="gphotos_url" href="#" target="_blank" rel="noopener"></a></div>
+        <div class="hint" style="margin-bottom:8px">Code: <b id="gphotos_code"></b></div>
         <div id="gphotos_poll_status" style="font-size:13px"></div>
       </div>
     </div>
 
     <div id="gphotos_configured" style="display:none">
       <div class="hint" style="margin-bottom:8px">Google Photos is connected.</div>
-      <button onclick="gphotosSync()">Sync photos now</button>
+      <button onclick="gphotosFetch()">Fetch photos</button>
       <button onclick="gphotosDisconnect()" style="margin-left:8px">Disconnect</button>
-      <div id="gphotos_sync_status" style="margin-top:8px;font-size:13px"></div>
+      <div id="gphotos_fetch_status" style="margin-top:8px;font-size:13px"></div>
     </div>
   </div>
 
@@ -217,7 +219,7 @@ function deletePhoto(name, row) {
     }).catch(function(){});
 }
 
-// ---- Google Photos (host rclone, approved on the kiosk screen) ----
+// ---- Google Photos (device-code OAuth, web-driven) ----
 function loadGphotos() {
   fetch("/api/gphotos/status").then(r => r.json()).then(s => {
     var st = document.getElementById("gphotos_status");
@@ -237,45 +239,54 @@ function loadGphotos() {
 
 function gphotosStart() {
   var st = document.getElementById("gphotos_poll_status");
-  st.textContent = "Starting Google sign-in on the kiosk screen...";
+  st.textContent = "Starting Google sign-in...";
   st.className = "";
-  document.getElementById("gphotos_flow").style.display = "block";
   fetch("/api/gphotos/start", { method: "POST" })
     .then(r => r.json()).then(res => {
       if (!res.ok) { st.textContent = "Error: " + (res.error || "unknown"); st.className = "err"; return; }
-      st.textContent = "The kiosk screen is showing Google's sign-in. Approve it there, then wait here.";
+      document.getElementById("gphotos_url").href = res.verification_url;
+      document.getElementById("gphotos_url").textContent = res.verification_url;
+      document.getElementById("gphotos_code").textContent = res.user_code;
+      document.getElementById("gphotos_flow").style.display = "block";
+      st.textContent = "Waiting for you to approve...";
       gphotosPoll();
     }).catch(() => { st.textContent = "Could not start sign-in."; st.className = "err"; });
 }
 
 function gphotosPoll() {
   var st = document.getElementById("gphotos_poll_status");
-  fetch("/api/gphotos/status").then(r => r.json()).then(s => {
-    if (s.configured) {
-      st.textContent = "Connected!";
-      st.className = "ok";
-      loadGphotos();
-    } else {
-      st.textContent = "Waiting for you to approve on the kiosk screen...";
-      setTimeout(gphotosPoll, 5000);
-    }
-  }).catch(() => { setTimeout(gphotosPoll, 5000); });
-}
-
-function gphotosSync() {
-  var st = document.getElementById("gphotos_sync_status");
-  st.textContent = "Syncing photos...";
-  st.className = "";
-  fetch("/api/sync/trigger", { method: "POST" })
+  fetch("/api/gphotos/poll", { method: "POST" })
     .then(r => r.json()).then(res => {
-      st.textContent = res.ok ? "Sync requested. Photos will appear shortly." : ("Error: " + (res.error || "unknown"));
-      st.className = res.ok ? "ok" : "err";
-    }).catch(() => { st.textContent = "Sync request failed."; st.className = "err"; });
+      if (res.ok) {
+        st.textContent = "Connected!";
+        st.className = "ok";
+        loadGphotos();
+      } else if (res.pending) {
+        st.textContent = "Waiting for you to approve in the browser...";
+        setTimeout(gphotosPoll, 5000);
+      } else {
+        st.textContent = "Error: " + (res.error || "unknown");
+        st.className = "err";
+      }
+    }).catch(() => { st.textContent = "Poll failed."; st.className = "err"; });
 }
 
 function gphotosDisconnect() {
-  // No server-side disconnect endpoint; just refresh status.
-  loadGphotos();
+  fetch("/api/gphotos/disconnect", { method: "POST" })
+    .then(r => r.json()).then(res => {
+      loadGphotos();
+    }).catch(function(){});
+}
+
+function gphotosFetch() {
+  var st = document.getElementById("gphotos_fetch_status");
+  st.textContent = "Fetching photos...";
+  st.className = "";
+  fetch("/api/gphotos/fetch", { method: "POST" })
+    .then(r => r.json()).then(res => {
+      st.textContent = res.ok ? ("Downloaded " + res.downloaded + " photos.") : ("Error: " + (res.error || "unknown"));
+      st.className = res.ok ? "ok" : "err";
+    }).catch(() => { st.textContent = "Fetch failed."; st.className = "err"; });
 }
 
 load();
