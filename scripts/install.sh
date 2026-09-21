@@ -45,6 +45,22 @@ MODE="container"   # container | source
 log() { echo "[kiosk-install] $*"; }
 die() { echo "[kiosk-install] ERROR: $*" >&2; exit 1; }
 
+# --- Progress bar --------------------------------------------------------
+# Renders an overall install progress line before each phase. Only draws when
+# stdout is a TTY (a curl|bash pipe has no terminal, so it stays quiet and
+# just logs). Usage: progress <current> <total> <label>
+PROGRESS_TOTAL=11
+progress() {
+    [ -t 1 ] || return 0
+    local cur="$1" total="$2" label="$3"
+    local pct=$((cur * 100 / total))
+    local filled=$((pct / 5))          # 20 chars wide
+    local empty=$((20 - filled))
+    local bar
+    bar="$(printf '%*s' "$filled" '' | tr ' ' '=')$(printf '%*s' "$empty" '' | tr ' ' '-')"
+    printf "${CYAN}[%s]${NC} ${BOLD}%3d%%${NC} %s\n" "$bar" "$pct" "$label"
+}
+
 ## UI COLORS (ASCII-safe, no unicode box-drawing — keeps terminal
 ## compatibility across serial consoles / minimal TTYs). Disabled
 ## automatically when stdout isn't a terminal (e.g. piped/logged output).
@@ -404,15 +420,25 @@ main() {
     parse_args "$@"
     print_banner
     log "HA Photo Kiosk installer starting (mode=$MODE)."
+    progress 1 "$PROGRESS_TOTAL" "Checking prerequisites"
     check_prereqs
+    progress 2 "$PROGRESS_TOTAL" "Creating kiosk user"
     install_user
+    progress 3 "$PROGRESS_TOTAL" "Installing engine"
     install_engine
+    progress 4 "$PROGRESS_TOTAL" "Installing engine service"
     install_engine_service
+    progress 5 "$PROGRESS_TOTAL" "Installing supervisor"
     install_supervisor
+    progress 6 "$PROGRESS_TOTAL" "Installing graphical stack (X, Chromium, Openbox)"
     install_gui
+    progress 7 "$PROGRESS_TOTAL" "Setting up photos dir"
     setup_photos
+    progress 8 "$PROGRESS_TOTAL" "Configuring firewall"
     install_firewall
+    progress 9 "$PROGRESS_TOTAL" "Setting up config auth"
     install_auth
+    progress 10 "$PROGRESS_TOTAL" "Installing Google Photos sync"
     install_gphotos_sync
 
     # Start the engine now (container starts via compose; source via systemd).
@@ -423,6 +449,7 @@ main() {
     # Start the kiosk now — the box is a working kiosk immediately, not just
     # configured (R19b). The supervisor brings up X + Chromium on the display.
     systemctl start ha-photo-kiosk.service && log "kiosk started (X + Chromium on the display)."
+    progress 11 "$PROGRESS_TOTAL" "Install complete"
 
     log ""
     log "=========================== INSTALL COMPLETE ========================"
