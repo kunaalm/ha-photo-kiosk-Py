@@ -62,7 +62,10 @@ Prioritized: **M**andatory, **S**hould, **C**ould.
 - R7. **Google Photos**: NOT read directly in-app. The owner opts in to a
   **built-in sync mechanism** (rclone on the host) that pulls their Google
   Photos into the local photo folder on a schedule. The engine never talks to
-  Google.
+  Google. **rclone's OAuth is driven headless from the web config UI** — the
+  UI shows a verification URL + code, the owner approves in any browser, and
+  pastes the code back. No CLI, no Google Cloud project (rclone ships its own
+  OAuth client).
 
 See [5. Non-goals](#5-non-goals) for why Google is sync-not-API.
 
@@ -72,9 +75,9 @@ See [5. Non-goals](#5-non-goals) for why Google is sync-not-API.
 - R9. Configure: HA URL, photo source, photo directory, idle timeout, slide
   interval, idle fade.
 - R10. Manage photos: upload, list, delete.
-- R11. **Google Photos sync section:** enable/disable, rclone remote name,
-  source path, trigger "Sync now", and show sync status (last run / error /
-  count).
+- R11. **Google Photos sync section:** connect the account (headless OAuth
+  driven from the UI), enable/disable, rclone remote name, source path,
+  trigger "Sync now", and show sync status (last run / error / count).
 - R12. All config/management endpoints are **basic-auth protected**.
 
 ### 4.4 Security & hardening (M)
@@ -122,13 +125,17 @@ regression:
 - **NG1. Google Photos Ambient API / Picker API in-app.** These are product
   integrations for commercial "ambient display" devices (a fleet to manage, an
   OAuth client, a consent/device flow). This is a personal homelab box; the
-  correct mechanism is **sync-to-folder** (R7). Rejected and removed.
+  correct mechanism is **sync-to-folder via rclone** (R7). Rejected and removed.
+- **NG1a. Engine-side Google OAuth (device-code in the app).** Requires the
+  owner to create a Google Cloud project + OAuth client, which is out of scope
+  for a homelab. Rejected. Google access goes through **rclone**, which ships
+  its own OAuth client and needs no project.
 - **NG2. Apple Photos.** No public API; not built.
 - **NG3. Ubuntu / snap-first.** Target is light Debian / Raspberry Pi OS.
 - **NG4. Multi-user / fleet / cloud account management.** Not a product.
 - **NG5. Enterprise SSO, Active Directory, etc.**
 - **NG6. A Photo Cloud API at all inside the app.** Cloud photos enter via
-  local files only.
+  local files only (rclone syncs them into the folder).
 - **NG7. Running Chromium unsandboxed / as root.**
 - **NG8. Anything that breaks the "configure from a PC, not the kiosk screen"**
   model.
