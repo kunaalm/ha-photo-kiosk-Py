@@ -114,12 +114,6 @@ See [5. Non-goals](#5-non-goals) for why Google is sync-not-API.
 - R24. A host supervisor keeps Chromium alive.
 - R25. Clean uninstall script removes everything it created.
 
-### 4.6 Hobbyist-friendly presentation (S)
-- R26. README is demo-first and short.
-- R27. Real photographs everywhere in docs/demo — **no gradient/pattern
-  stand-ins**.
-- R28. Architecture and design docs for auditing generated code.
-
 ## 5. Non-goals
 
 Explicitly *out of scope* — writing these down prevents scope creep and
@@ -163,7 +157,6 @@ regression:
 | R12 basic auth | ✅ implemented |
 | R13–R18 security/hardening | ✅ implemented |
 | R19–R25 install/deploy | ✅ implemented (released `v0.1.0`; installer auto-installs Docker + the full GUI stack: X server, Chromium, Openbox, autologin). **R19 validated on a clean Debian 12 VM** — real `curl|bash` from a box with no Docker/X/Chromium/git, booted to a working kiosk showing a real photo. **R19b: installer now starts the engine, supervisor, and gphotos timer/path** |
-| R26–R28 hobbyist presentation | ✅ implemented |
 | Test suite + VM harness | ✅ 48 tests; VM harness in `tests/vm-harness/` |
 
 ## How to use this document
